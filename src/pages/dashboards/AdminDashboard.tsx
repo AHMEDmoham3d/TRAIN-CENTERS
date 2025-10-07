@@ -1,174 +1,235 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { 
-  Users, BookOpen, CreditCard, BarChart2, 
-  TrendingUp, TrendingDown, ExternalLink, 
-  PieChart, Server, ShieldCheck, Settings 
+import {
+  Users, BookOpen, CreditCard, BarChart2,
+  TrendingUp, TrendingDown, ExternalLink,
+  PieChart, Server, ShieldCheck, Settings
 } from 'lucide-react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
 
-// Demo data
-const platformStats = [
-  {
-    id: '1',
-    title: 'Total Users',
-    count: 4895,
-    icon: <Users className="w-6 h-6 text-primary-500" />,
-    trend: '+12.5%',
-    trendUp: true,
-  },
-  {
-    id: '2',
-    title: 'Active Courses',
-    count: 256,
-    icon: <BookOpen className="w-6 h-6 text-secondary-500" />,
-    trend: '+5.2%',
-    trendUp: true,
-  },
-  {
-    id: '3',
-    title: 'Revenue (Monthly)',
-    count: '$46,289',
-    icon: <CreditCard className="w-6 h-6 text-success-500" />,
-    trend: '+15.3%',
-    trendUp: true,
-  },
-  {
-    id: '4',
-    title: 'New Subscriptions',
-    count: 345,
-    icon: <BarChart2 className="w-6 h-6 text-warning-500" />,
-    trend: '-2.8%',
-    trendUp: false,
-  },
-];
+interface PlatformStat {
+  id: string;
+  title: string;
+  count: number;
+  icon: React.ReactNode;
+  trend: string;
+  trendUp: boolean;
+}
 
-const userActivityStats = [
-  { date: 'Mon', students: 380, teachers: 95, parents: 120 },
-  { date: 'Tue', students: 420, teachers: 100, parents: 150 },
-  { date: 'Wed', students: 450, teachers: 110, parents: 185 },
-  { date: 'Thu', students: 470, teachers: 108, parents: 175 },
-  { date: 'Fri', students: 490, teachers: 115, parents: 190 },
-  { date: 'Sat', students: 320, teachers: 60, parents: 140 },
-  { date: 'Sun', students: 280, teachers: 45, parents: 110 },
-];
+interface RecentUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  joinDate: string;
+  status: string;
+  avatar: string;
+}
 
-const recentUsers = [
-  {
-    id: '1',
-    name: 'Olivia Martinez',
-    email: 'olivia.m@example.com',
-    role: 'Student',
-    joinDate: 'Today, 10:24 AM',
-    status: 'active',
-    avatar: 'OM',
-  },
-  {
-    id: '2',
-    name: 'James Wilson',
-    email: 'j.wilson@example.com',
-    role: 'Teacher',
-    joinDate: 'Yesterday, 2:45 PM',
-    status: 'active',
-    avatar: 'JW',
-  },
-  {
-    id: '3',
-    name: 'Sophia Lee',
-    email: 'sophia.lee@example.com',
-    role: 'Parent',
-    joinDate: '2 days ago',
-    status: 'pending',
-    avatar: 'SL',
-  },
-  {
-    id: '4',
-    name: 'Ethan Johnson',
-    email: 'ethan.j@example.com',
-    role: 'Student',
-    joinDate: '3 days ago',
-    status: 'active',
-    avatar: 'EJ',
-  },
-];
+interface SubscriptionItem {
+  plan: string;
+  users: number;
+  percentage: number;
+}
 
-const subscriptionData = [
-  { plan: 'Free Trial', users: 1250, percentage: 25 },
-  { plan: 'Basic', users: 2000, percentage: 40 },
-  { plan: 'Standard', users: 1200, percentage: 24 },
-  { plan: 'Premium', users: 550, percentage: 11 },
-];
+interface SystemHealthItem {
+  id: string;
+  name: string;
+  status: string;
+  metric: string;
+  icon: React.ReactNode;
+}
 
-const systemHealth = [
-  {
-    id: '1',
-    name: 'Server Uptime',
-    status: 'healthy',
-    metric: '99.98%',
-    icon: <Server className="w-5 h-5" />,
-  },
-  {
-    id: '2',
-    name: 'Database Load',
-    status: 'normal',
-    metric: '42%',
-    icon: <PieChart className="w-5 h-5" />,
-  },
-  {
-    id: '3',
-    name: 'API Response Time',
-    status: 'warning',
-    metric: '320ms',
-    icon: <TrendingUp className="w-5 h-5" />,
-  },
-  {
-    id: '4',
-    name: 'Security Status',
-    status: 'healthy',
-    metric: 'Secure',
-    icon: <ShieldCheck className="w-5 h-5" />,
-  },
-];
-
-const recentActivity = [
-  {
-    id: '1',
-    action: 'User Created',
-    details: 'New teacher account registered',
-    time: '10 minutes ago',
-    ip: '192.168.1.45',
-    user: 'System API',
-  },
-  {
-    id: '2',
-    action: 'Course Published',
-    details: 'Advanced Physics course is now live',
-    time: '2 hours ago',
-    ip: '172.16.254.1',
-    user: 'David Wilson (Admin)',
-  },
-  {
-    id: '3',
-    action: 'Payment Processed',
-    details: 'Monthly subscription payment received',
-    time: '3 hours ago',
-    ip: 'Stripe API',
-    user: 'System',
-  },
-  {
-    id: '4',
-    action: 'System Update',
-    details: 'Platform updated to version 2.4.0',
-    time: 'Yesterday',
-    ip: 'Internal',
-    user: 'System Admin',
-  },
-];
+interface RecentActivityItem {
+  id: string;
+  action: string;
+  details: string;
+  time: string;
+  ip: string;
+  user: string;
+}
 
 const AdminDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+
+  const [platformStats, setPlatformStats] = useState<PlatformStat[]>([]);
+  const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
+  const [subscriptionData, setSubscriptionData] = useState<SubscriptionItem[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealthItem[]>([]);
+  const [recentActivity, setRecentActivity] = useState<RecentActivityItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      setLoading(true);
+      try {
+        // Fetch total users
+        const { count: totalUsers } = await supabase
+          .from('users')
+          .select('*', { count: 'exact', head: true });
+
+        // Fetch total centers
+        const { count: totalCenters } = await supabase
+          .from('centers')
+          .select('*', { count: 'exact', head: true });
+
+        // Fetch total materials (as courses)
+        const { count: totalMaterials } = await supabase
+          .from('materials')
+          .select('*', { count: 'exact', head: true });
+
+        // Fetch total payments (revenue)
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('amount');
+
+        const totalRevenue = payments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+
+        // Set platform stats
+        setPlatformStats([
+          {
+            id: '1',
+            title: 'Total Users',
+            count: totalUsers || 0,
+            icon: <Users className="w-6 h-6 text-primary-500" />,
+            trend: '+12.5%',
+            trendUp: true,
+          },
+          {
+            id: '2',
+            title: 'Active Centers',
+            count: totalCenters || 0,
+            icon: <BookOpen className="w-6 h-6 text-secondary-500" />,
+            trend: '+5.2%',
+            trendUp: true,
+          },
+          {
+            id: '3',
+            title: 'Revenue (Total)',
+            count: totalRevenue,
+            icon: <CreditCard className="w-6 h-6 text-success-500" />,
+            trend: '+15.3%',
+            trendUp: true,
+          },
+          {
+            id: '4',
+            title: 'Total Materials',
+            count: totalMaterials || 0,
+            icon: <BarChart2 className="w-6 h-6 text-warning-500" />,
+            trend: '-2.8%',
+            trendUp: false,
+          },
+        ]);
+
+        // Fetch recent users
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(4);
+
+        if (usersData) {
+          setRecentUsers(usersData.map(u => ({
+            id: u.id,
+            name: u.name || u.email,
+            email: u.email,
+            role: u.role,
+            joinDate: new Date(u.created_at).toLocaleDateString(),
+            status: 'active',
+            avatar: (u.name || u.email).split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+          })));
+        }
+
+        // Mock subscription data (since subscriptions table might not have plan types)
+        setSubscriptionData([
+          { plan: 'Free Trial', users: 1250, percentage: 25 },
+          { plan: 'Basic', users: 2000, percentage: 40 },
+          { plan: 'Standard', users: 1200, percentage: 24 },
+          { plan: 'Premium', users: 550, percentage: 11 },
+        ]);
+
+        // Mock system health
+        setSystemHealth([
+          {
+            id: '1',
+            name: 'Server Uptime',
+            status: 'healthy',
+            metric: '99.98%',
+            icon: <Server className="w-5 h-5" />,
+          },
+          {
+            id: '2',
+            name: 'Database Load',
+            status: 'normal',
+            metric: '42%',
+            icon: <PieChart className="w-5 h-5" />,
+          },
+          {
+            id: '3',
+            name: 'API Response Time',
+            status: 'warning',
+            metric: '320ms',
+            icon: <TrendingUp className="w-5 h-5" />,
+          },
+          {
+            id: '4',
+            name: 'Security Status',
+            status: 'healthy',
+            metric: 'Secure',
+            icon: <ShieldCheck className="w-5 h-5" />,
+          },
+        ]);
+
+        // Mock recent activity
+        setRecentActivity([
+          {
+            id: '1',
+            action: 'User Created',
+            details: 'New teacher account registered',
+            time: '10 minutes ago',
+            ip: '192.168.1.45',
+            user: 'System API',
+          },
+          {
+            id: '2',
+            action: 'Course Published',
+            details: 'Advanced Physics course is now live',
+            time: '2 hours ago',
+            ip: '172.16.254.1',
+            user: 'David Wilson (Admin)',
+          },
+          {
+            id: '3',
+            action: 'Payment Processed',
+            details: 'Monthly subscription payment received',
+            time: '3 hours ago',
+            ip: 'Stripe API',
+            user: 'System',
+          },
+          {
+            id: '4',
+            action: 'System Update',
+            details: 'Platform updated to version 2.4.0',
+            time: 'Yesterday',
+            ip: 'Internal',
+            user: 'System Admin',
+          },
+        ]);
+
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+        toast.error('Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
 
   // Helper for status badge
   const getStatusBadgeClass = (status: string) => {
@@ -191,6 +252,16 @@ const AdminDashboard: React.FC = () => {
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <p className="text-center p-8">جارِ التحميل...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

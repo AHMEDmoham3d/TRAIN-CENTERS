@@ -1,156 +1,175 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, BookOpen, Calendar, Bell, TrendingUp, ExternalLink, Award } from 'lucide-react';
+import { TrendingUp, ExternalLink, Award } from 'lucide-react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
 
-// Demo data
-const children = [
-  {
-    id: '1',
-    name: 'Emma Johnson',
-    age: 12,
-    grade: '7th Grade',
-    school: 'Lincoln Middle School',
-    avatar: 'EJ',
-  },
-  {
-    id: '2',
-    name: 'Noah Johnson',
-    age: 9,
-    grade: '4th Grade',
-    school: 'Washington Elementary',
-    avatar: 'NJ',
-  },
-];
+interface Child {
+  id: string;
+  name: string;
+  age: number;
+  grade: string;
+  school: string;
+  avatar: string;
+}
 
-const upcomingEvents = [
-  {
-    id: '1',
-    title: 'Parent-Teacher Conference',
-    date: 'Tomorrow, 4:00 PM',
-    location: 'Lincoln Middle School',
-    child: 'Emma Johnson',
-  },
-  {
-    id: '2',
-    title: 'School Science Fair',
-    date: 'Friday, 2:00 PM',
-    location: 'Washington Elementary',
-    child: 'Noah Johnson',
-  },
-  {
-    id: '3',
-    title: 'Math Tutoring Session',
-    date: 'Next Tuesday, 5:30 PM',
-    location: 'Online (Zoom)',
-    child: 'Emma Johnson',
-  },
-];
+interface UpcomingEvent {
+  id: string;
+  title: string;
+  date: string;
+  location: string;
+  child: string;
+}
 
-const academicPerformance = [
-  {
-    id: '1',
-    child: 'Emma Johnson',
-    subject: 'Mathematics',
-    grade: 'A-',
-    progress: 87,
-    trend: '+5%',
-  },
-  {
-    id: '2',
-    child: 'Emma Johnson',
-    subject: 'Science',
-    grade: 'B+',
-    progress: 78,
-    trend: '+2%',
-  },
-  {
-    id: '3',
-    child: 'Noah Johnson',
-    subject: 'English',
-    grade: 'A',
-    progress: 92,
-    trend: '+3%',
-  },
-  {
-    id: '4',
-    child: 'Noah Johnson',
-    subject: 'Art',
-    grade: 'A+',
-    progress: 95,
-    trend: 'Unchanged',
-  },
-];
+interface AcademicPerformance {
+  id: string;
+  child: string;
+  subject: string;
+  grade: string;
+  progress: number;
+  trend: string;
+}
 
-const recentMessages = [
-  {
-    id: '1',
-    from: 'Ms. Rachel Chen',
-    role: 'Math Teacher',
-    message: 'Emma has been showing great improvement in calculus concepts.',
-    time: 'Yesterday',
-    child: 'Emma Johnson',
-    avatar: 'RC',
-  },
-  {
-    id: '2',
-    from: 'Mr. David Wilson',
-    role: 'English Teacher',
-    message: 'Noah\'s latest essay was very creative and well-structured.',
-    time: '2 days ago',
-    child: 'Noah Johnson',
-    avatar: 'DW',
-  },
-];
+interface RecentMessage {
+  id: string;
+  from: string;
+  role: string;
+  message: string;
+  time: string;
+  child: string;
+  avatar: string;
+}
 
-const paymentHistory = [
-  {
-    id: '1',
-    description: 'Tutoring Sessions - May',
-    amount: '$120.00',
-    date: 'May 1, 2025',
-    status: 'paid',
-    child: 'Emma Johnson',
-  },
-  {
-    id: '2',
-    description: 'School Trip to Science Museum',
-    amount: '$45.00',
-    date: 'April 15, 2025',
-    status: 'paid',
-    child: 'Noah Johnson',
-  },
-  {
-    id: '3',
-    description: 'Premium Learning Subscription',
-    amount: '$29.99',
-    date: 'April 1, 2025',
-    status: 'paid',
-    child: 'Both',
-  },
-];
+interface PaymentHistory {
+  id: string;
+  description: string;
+  amount: string;
+  date: string;
+  status: string;
+  child: string;
+}
 
-const achievements = [
-  {
-    id: '1',
-    title: 'Science Fair Winner',
-    description: 'First place in the regional science competition',
-    date: '2 weeks ago',
-    child: 'Emma Johnson',
-  },
-  {
-    id: '2',
-    title: 'Perfect Attendance',
-    description: 'Completed 3 months with perfect attendance',
-    date: '1 month ago',
-    child: 'Noah Johnson',
-  },
-];
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  child: string;
+}
 
 const ParentDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+
+  const [children, setChildren] = useState<Child[]>([]);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
+  const [academicPerformance, setAcademicPerformance] = useState<AcademicPerformance[]>([]);
+  const [recentMessages, setRecentMessages] = useState<RecentMessage[]>([]);
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistory[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
+
+      setLoading(true);
+      try {
+        // Fetch parent's children (students)
+        const { data: studentsData } = await supabase
+          .from('students')
+          .select('*')
+          .eq('parent_id', user.id);
+
+        if (studentsData) {
+          setChildren(studentsData.map(s => ({
+            id: s.id,
+            name: s.name || 'Student',
+            age: s.age || 10,
+            grade: s.grade || 'Unknown',
+            school: s.school || 'Unknown',
+            avatar: (s.name || 'S').split(' ').map((n: string) => n[0]).join('').toUpperCase(),
+          })));
+        }
+
+        // Fetch payments for this parent
+        const { data: paymentsData } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('parent_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (paymentsData) {
+          setPaymentHistory(paymentsData.map(p => ({
+            id: p.id,
+            description: p.description || 'Payment',
+            amount: `$${p.amount}`,
+            date: new Date(p.created_at).toLocaleDateString(),
+            status: p.status,
+            child: p.student_id ? 'Child' : 'General', // Mock child name
+          })));
+        }
+
+        // Mock upcoming events
+        setUpcomingEvents([
+          {
+            id: '1',
+            title: 'Parent-Teacher Conference',
+            date: 'Tomorrow, 4:00 PM',
+            location: 'School',
+            child: 'Child',
+          },
+        ]);
+
+        // Mock academic performance
+        setAcademicPerformance([
+          {
+            id: '1',
+            child: 'Child',
+            subject: 'Mathematics',
+            grade: 'A-',
+            progress: 87,
+            trend: '+5%',
+          },
+        ]);
+
+        // Mock recent messages
+        setRecentMessages([
+          {
+            id: '1',
+            from: 'Teacher',
+            role: 'Math Teacher',
+            message: 'Good progress in math.',
+            time: 'Yesterday',
+            child: 'Child',
+            avatar: 'T',
+          },
+        ]);
+
+        // Mock achievements
+        setAchievements([
+          {
+            id: '1',
+            title: 'Good Grade',
+            description: 'Achieved A in math',
+            date: '2 weeks ago',
+            child: 'Child',
+          },
+        ]);
+
+      } catch (error) {
+        console.error('Error fetching parent dashboard data:', error);
+        toast.error('Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
 
   // Helper for payment status
   const getPaymentStatusClass = (status: string) => {
@@ -165,6 +184,16 @@ const ParentDashboard: React.FC = () => {
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <p className="text-center p-8">جارِ التحميل...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

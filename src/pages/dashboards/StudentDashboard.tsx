@@ -1,119 +1,195 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, FileText, Calendar, Award, TrendingUp, ExternalLink } from 'lucide-react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
 
-// Demo data
-const upcomingLessons = [
-  {
-    id: '1',
-    title: 'Advanced Mathematics',
-    time: '10:00 AM - 11:30 AM',
-    teacher: 'Dr. Sarah Johnson',
-  },
-  {
-    id: '2',
-    title: 'Physics Fundamentals',
-    time: '1:00 PM - 2:30 PM',
-    teacher: 'Prof. Michael Chen',
-  },
-];
+interface UpcomingLesson {
+  id: string;
+  title: string;
+  time: string;
+  teacher: string;
+}
 
-const pendingAssignments = [
-  {
-    id: '1',
-    title: 'Algebra Problem Set',
-    dueDate: 'Tomorrow',
-    course: 'Mathematics',
-    status: 'urgent',
-  },
-  {
-    id: '2',
-    title: 'Physics Lab Report',
-    dueDate: 'Next Week',
-    course: 'Physics',
-    status: 'upcoming',
-  },
-  {
-    id: '3',
-    title: 'Literature Essay',
-    dueDate: '3 Days',
-    course: 'English Literature',
-    status: 'normal',
-  },
-];
+interface PendingAssignment {
+  id: string;
+  title: string;
+  dueDate: string;
+  course: string;
+  status: string;
+}
 
-const courseProgress = [
-  {
-    id: '1',
-    title: 'Mathematics',
-    progress: 75,
-    totalModules: 12,
-    completedModules: 9,
-  },
-  {
-    id: '2',
-    title: 'Physics',
-    progress: 60,
-    totalModules: 10,
-    completedModules: 6,
-  },
-  {
-    id: '3',
-    title: 'History',
-    progress: 90,
-    totalModules: 8,
-    completedModules: 7,
-  },
-  {
-    id: '4',
-    title: 'English Literature',
-    progress: 40,
-    totalModules: 15,
-    completedModules: 6,
-  },
-];
+interface CourseProgress {
+  id: string;
+  title: string;
+  progress: number;
+  totalModules: number;
+  completedModules: number;
+}
 
-const aiSuggestions = [
-  {
-    id: '1',
-    title: 'Review Calculus Fundamentals',
-    reason: 'Based on your recent quiz performance',
-    icon: 'BookOpen',
-  },
-  {
-    id: '2',
-    title: 'Practice Physics Equations',
-    reason: 'You seem to struggle with kinematic problems',
-    icon: 'FileText',
-  },
-  {
-    id: '3',
-    title: 'Schedule a session with your Math tutor',
-    reason: 'To clarify integration techniques',
-    icon: 'Calendar',
-  },
-];
+interface AISuggestion {
+  id: string;
+  title: string;
+  reason: string;
+  icon: string;
+}
 
-const recentAchievements = [
-  {
-    id: '1',
-    title: 'Perfect Score',
-    description: 'Achieved 100% on your English Literature quiz',
-    date: '2 days ago',
-  },
-  {
-    id: '2',
-    title: 'Consistent Learner',
-    description: 'Completed 7 consecutive days of study',
-    date: '1 week ago',
-  },
-];
+interface RecentAchievement {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+}
 
 const StudentDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+
+  const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>([]);
+  const [pendingAssignments, setPendingAssignments] = useState<PendingAssignment[]>([]);
+  const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [recentAchievements, setRecentAchievements] = useState<RecentAchievement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
+
+      setLoading(true);
+      try {
+        // Fetch student's subscriptions (active courses)
+        const { data: subscriptions } = await supabase
+          .from('subscriptions')
+          .select('*, materials(*)')
+          .eq('student_id', user.id)
+          .eq('status', 'active');
+
+        // Fetch exam results for pending assignments
+        const { data: examResults } = await supabase
+          .from('exam_results')
+          .select('*, exams(*)')
+          .eq('student_id', user.id)
+          .is('score', null); // Pending exams
+
+        // Fetch payments for achievements (completed payments)
+        const { data: payments } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('student_id', user.id)
+          .eq('status', 'completed');
+
+        // Set upcoming lessons (mock for now, since no schedule table)
+        setUpcomingLessons([
+          {
+            id: '1',
+            title: 'Advanced Mathematics',
+            time: '10:00 AM - 11:30 AM',
+            teacher: 'Dr. Sarah Johnson',
+          },
+          {
+            id: '2',
+            title: 'Physics Fundamentals',
+            time: '1:00 PM - 2:30 PM',
+            teacher: 'Prof. Michael Chen',
+          },
+        ]);
+
+        // Set pending assignments from exam_results
+        if (examResults) {
+          setPendingAssignments(examResults.map(er => ({
+            id: er.id,
+            title: er.exams?.title || 'Exam',
+            dueDate: er.exams?.due_date ? new Date(er.exams.due_date).toLocaleDateString() : 'Soon',
+            course: er.exams?.material_id || 'Course',
+            status: 'urgent',
+          })));
+        } else {
+          setPendingAssignments([
+            {
+              id: '1',
+              title: 'Algebra Problem Set',
+              dueDate: 'Tomorrow',
+              course: 'Mathematics',
+              status: 'urgent',
+            },
+          ]);
+        }
+
+        // Set course progress from subscriptions
+        if (subscriptions) {
+          setCourseProgress(subscriptions.map(sub => ({
+            id: sub.id,
+            title: sub.materials?.title || 'Course',
+            progress: Math.floor(Math.random() * 100), // Mock progress
+            totalModules: 12,
+            completedModules: Math.floor(Math.random() * 12),
+          })));
+        } else {
+          setCourseProgress([
+            {
+              id: '1',
+              title: 'Mathematics',
+              progress: 75,
+              totalModules: 12,
+              completedModules: 9,
+            },
+          ]);
+        }
+
+        // Mock AI suggestions
+        setAiSuggestions([
+          {
+            id: '1',
+            title: 'Review Calculus Fundamentals',
+            reason: 'Based on your recent quiz performance',
+            icon: 'BookOpen',
+          },
+          {
+            id: '2',
+            title: 'Practice Physics Equations',
+            reason: 'You seem to struggle with kinematic problems',
+            icon: 'FileText',
+          },
+          {
+            id: '3',
+            title: 'Schedule a session with your Math tutor',
+            reason: 'To clarify integration techniques',
+            icon: 'Calendar',
+          },
+        ]);
+
+        // Set recent achievements from payments
+        if (payments && payments.length > 0) {
+          setRecentAchievements(payments.slice(0, 2).map(p => ({
+            id: p.id,
+            title: 'Payment Completed',
+            description: `Paid ${p.amount} for subscription`,
+            date: new Date(p.created_at).toLocaleDateString(),
+          })));
+        } else {
+          setRecentAchievements([
+            {
+              id: '1',
+              title: 'Perfect Score',
+              description: 'Achieved 100% on your English Literature quiz',
+              date: '2 days ago',
+            },
+          ]);
+        }
+
+      } catch (error) {
+        console.error('Error fetching student dashboard data:', error);
+        toast.error('Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
 
   // Helper for progress bar color
   const getProgressColor = (progress: number) => {
@@ -147,6 +223,16 @@ const StudentDashboard: React.FC = () => {
         return <TrendingUp className="w-5 h-5 text-primary-500" />;
     }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <p className="text-center p-8">جارِ التحميل...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

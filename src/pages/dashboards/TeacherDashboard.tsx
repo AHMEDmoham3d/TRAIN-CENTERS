@@ -1,154 +1,249 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Users, BookOpen, FileText, Calendar, BarChart2, ExternalLink } from 'lucide-react';
+import { Users, BookOpen, FileText, Calendar, ExternalLink } from 'lucide-react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import { useAuthStore } from '../../store/authStore';
+import { supabase } from '@/lib/supabase';
+import toast from 'react-hot-toast';
 
-// Demo data
-const courseStats = [
-  {
-    id: '1',
-    title: 'Active Courses',
-    count: 5,
-    icon: <BookOpen className="w-6 h-6 text-primary-500" />,
-    trend: '+2 from last month',
-    trendUp: true,
-  },
-  {
-    id: '2',
-    title: 'Total Students',
-    count: 128,
-    icon: <Users className="w-6 h-6 text-secondary-500" />,
-    trend: '+12 from last month',
-    trendUp: true,
-  },
-  {
-    id: '3',
-    title: 'Pending Assignments',
-    count: 23,
-    icon: <FileText className="w-6 h-6 text-warning-500" />,
-    trend: '-5 from last week',
-    trendUp: false,
-  },
-  {
-    id: '4',
-    title: 'Upcoming Sessions',
-    count: 7,
-    icon: <Calendar className="w-6 h-6 text-accent-500" />,
-    trend: 'Next 7 days',
-    trendUp: null,
-  },
-];
+interface CourseStat {
+  id: string;
+  title: string;
+  count: number;
+  icon: React.ReactNode;
+  trend: string;
+  trendUp: boolean | null;
+}
 
-const upcomingClasses = [
-  {
-    id: '1',
-    title: 'Advanced Mathematics - Calculus',
-    date: 'Today, 10:00 AM',
-    students: 24,
-    location: 'Room 302',
-  },
-  {
-    id: '2',
-    title: 'Algebra Fundamentals',
-    date: 'Today, 2:00 PM',
-    students: 32,
-    location: 'Online (Zoom)',
-  },
-  {
-    id: '3',
-    title: 'Geometry for Beginners',
-    date: 'Tomorrow, 11:30 AM',
-    students: 18,
-    location: 'Room 201',
-  },
-];
+interface UpcomingClass {
+  id: string;
+  title: string;
+  date: string;
+  students: number;
+  location: string;
+}
 
-const pendingTasks = [
-  {
-    id: '1',
-    title: 'Grade Calculus Quizzes',
-    dueDate: 'Today',
-    priority: 'high',
-    course: 'Advanced Mathematics',
-  },
-  {
-    id: '2',
-    title: 'Prepare Algebra Lesson Plan',
-    dueDate: 'Tomorrow',
-    priority: 'medium',
-    course: 'Algebra Fundamentals',
-  },
-  {
-    id: '3',
-    title: 'Review Student Progress Reports',
-    dueDate: 'This Week',
-    priority: 'medium',
-    course: 'All Courses',
-  },
-  {
-    id: '4',
-    title: 'Update Course Materials',
-    dueDate: 'Next Week',
-    priority: 'low',
-    course: 'Geometry for Beginners',
-  },
-];
+interface PendingTask {
+  id: string;
+  title: string;
+  dueDate: string;
+  priority: string;
+  course: string;
+}
 
-const studentPerformance = [
-  {
-    id: '1',
-    course: 'Advanced Mathematics',
-    averageGrade: 85,
-    completionRate: 78,
-    improvement: +5,
-  },
-  {
-    id: '2',
-    course: 'Algebra Fundamentals',
-    averageGrade: 77,
-    completionRate: 92,
-    improvement: +12,
-  },
-  {
-    id: '3',
-    course: 'Geometry for Beginners',
-    averageGrade: 82,
-    completionRate: 65,
-    improvement: -3,
-  },
-];
+interface StudentPerformance {
+  id: string;
+  course: string;
+  averageGrade: number;
+  completionRate: number;
+  improvement: number;
+}
 
-const recentMessages = [
-  {
-    id: '1',
-    from: 'Alex Johnson',
-    role: 'Student',
-    message: 'Could you provide additional examples for the integration problem?',
-    time: '2 hours ago',
-    avatar: 'AJ',
-  },
-  {
-    id: '2',
-    from: 'Maria Garcia',
-    role: 'Parent',
-    message: 'I would like to schedule a meeting to discuss my son\'s progress.',
-    time: 'Yesterday',
-    avatar: 'MG',
-  },
-  {
-    id: '3',
-    from: 'Dr. Robert Chen',
-    role: 'Department Head',
-    message: 'Please submit your syllabus for the next semester by Friday.',
-    time: '2 days ago',
-    avatar: 'RC',
-  },
-];
+interface RecentMessage {
+  id: string;
+  from: string;
+  role: string;
+  message: string;
+  time: string;
+  avatar: string;
+}
 
 const TeacherDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+
+  const [courseStats, setCourseStats] = useState<CourseStat[]>([]);
+  const [upcomingClasses, setUpcomingClasses] = useState<UpcomingClass[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const [studentPerformance, setStudentPerformance] = useState<StudentPerformance[]>([]);
+  const [recentMessages, setRecentMessages] = useState<RecentMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!user) return;
+
+      setLoading(true);
+      try {
+        // Fetch materials count (courses)
+        const { count: materialsCount } = await supabase
+          .from('materials')
+          .select('*', { count: 'exact', head: true })
+          .eq('teacher_id', user.id);
+
+        // Fetch students count (students taught by this teacher)
+        const { count: studentsCount } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true })
+          .eq('teacher_id', user.id);
+
+        // Fetch exams count (pending assignments)
+        const { count: examsCount } = await supabase
+          .from('exams')
+          .select('*', { count: 'exact', head: true })
+          .eq('teacher_id', user.id);
+
+        // Fetch videos count (upcoming sessions)
+        const { count: videosCount } = await supabase
+          .from('videos')
+          .select('*', { count: 'exact', head: true })
+          .eq('teacher_id', user.id);
+
+        setCourseStats([
+          {
+            id: '1',
+            title: 'Active Courses',
+            count: materialsCount || 0,
+            icon: <BookOpen className="w-6 h-6 text-primary-500" />,
+            trend: '+2 from last month',
+            trendUp: true,
+          },
+          {
+            id: '2',
+            title: 'Total Students',
+            count: studentsCount || 0,
+            icon: <Users className="w-6 h-6 text-secondary-500" />,
+            trend: '+12 from last month',
+            trendUp: true,
+          },
+          {
+            id: '3',
+            title: 'Pending Assignments',
+            count: examsCount || 0,
+            icon: <FileText className="w-6 h-6 text-warning-500" />,
+            trend: '-5 from last week',
+            trendUp: false,
+          },
+          {
+            id: '4',
+            title: 'Upcoming Sessions',
+            count: videosCount || 0,
+            icon: <Calendar className="w-6 h-6 text-accent-500" />,
+            trend: 'Next 7 days',
+            trendUp: null,
+          },
+        ]);
+
+        // Mock upcoming classes (since no schedule table)
+        setUpcomingClasses([
+          {
+            id: '1',
+            title: 'Advanced Mathematics - Calculus',
+            date: 'Today, 10:00 AM',
+            students: 24,
+            location: 'Room 302',
+          },
+          {
+            id: '2',
+            title: 'Algebra Fundamentals',
+            date: 'Today, 2:00 PM',
+            students: 32,
+            location: 'Online (Zoom)',
+          },
+          {
+            id: '3',
+            title: 'Geometry for Beginners',
+            date: 'Tomorrow, 11:30 AM',
+            students: 18,
+            location: 'Room 201',
+          },
+        ]);
+
+        // Mock pending tasks
+        setPendingTasks([
+          {
+            id: '1',
+            title: 'Grade Calculus Quizzes',
+            dueDate: 'Today',
+            priority: 'high',
+            course: 'Advanced Mathematics',
+          },
+          {
+            id: '2',
+            title: 'Prepare Algebra Lesson Plan',
+            dueDate: 'Tomorrow',
+            priority: 'medium',
+            course: 'Algebra Fundamentals',
+          },
+          {
+            id: '3',
+            title: 'Review Student Progress Reports',
+            dueDate: 'This Week',
+            priority: 'medium',
+            course: 'All Courses',
+          },
+          {
+            id: '4',
+            title: 'Update Course Materials',
+            dueDate: 'Next Week',
+            priority: 'low',
+            course: 'Geometry for Beginners',
+          },
+        ]);
+
+        // Mock student performance
+        setStudentPerformance([
+          {
+            id: '1',
+            course: 'Advanced Mathematics',
+            averageGrade: 85,
+            completionRate: 78,
+            improvement: 5,
+          },
+          {
+            id: '2',
+            course: 'Algebra Fundamentals',
+            averageGrade: 77,
+            completionRate: 92,
+            improvement: 12,
+          },
+          {
+            id: '3',
+            course: 'Geometry for Beginners',
+            averageGrade: 82,
+            completionRate: 65,
+            improvement: -3,
+          },
+        ]);
+
+        // Mock recent messages
+        setRecentMessages([
+          {
+            id: '1',
+            from: 'Alex Johnson',
+            role: 'Student',
+            message: 'Could you provide additional examples for the integration problem?',
+            time: '2 hours ago',
+            avatar: 'AJ',
+          },
+          {
+            id: '2',
+            from: 'Maria Garcia',
+            role: 'Parent',
+            message: 'I would like to schedule a meeting to discuss my son\'s progress.',
+            time: 'Yesterday',
+            avatar: 'MG',
+          },
+          {
+            id: '3',
+            from: 'Dr. Robert Chen',
+            role: 'Department Head',
+            message: 'Please submit your syllabus for the next semester by Friday.',
+            time: '2 days ago',
+            avatar: 'RC',
+          },
+        ]);
+
+      } catch (error) {
+        console.error('Error fetching teacher dashboard data:', error);
+        toast.error('Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [user]);
 
   // Helper for priority badge
   const getPriorityBadgeClass = (priority: string) => {
@@ -161,6 +256,16 @@ const TeacherDashboard: React.FC = () => {
         return 'bg-gray-100 text-gray-800';
     }
   };
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="flex justify-center items-center h-64">
+          <p className="text-center p-8">جارِ التحميل...</p>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './store/authStore';
@@ -10,6 +10,7 @@ import StudentDashboard from './pages/dashboards/StudentDashboard';
 import TeacherDashboard from './pages/dashboards/TeacherDashboard';
 import ParentDashboard from './pages/dashboards/ParentDashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
+import CompanyDashboard from './pages/dashboards/company';
 import NotFound from './pages/NotFound';
 import CourseView from './pages/courses/CourseView';
 import CourseCreate from './pages/courses/CourseCreate';
@@ -47,7 +48,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
 
 function App() {
   const { i18n } = useTranslation();
-  const { isAuthenticated, user, initialize } = useAuthStore();
+  const { isAuthenticated, initialize } = useAuthStore();
   const location = useLocation();
 
   // Initialize the auth state
@@ -124,13 +125,21 @@ function App() {
           </PrivateRoute>
         } 
       />
-      <Route 
-        path="/dashboard/admin" 
+      <Route
+        path="/dashboard/admin"
         element={
           <PrivateRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </PrivateRoute>
-        } 
+        }
+      />
+      <Route
+        path="/dashboard/company"
+        element={
+          <PrivateRoute allowedRoles={['company']}>
+            <CompanyDashboard />
+          </PrivateRoute>
+        }
       />
       
       {/* Course routes */}
