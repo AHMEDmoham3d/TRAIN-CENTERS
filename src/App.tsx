@@ -1,7 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './store/authStore';
+import { supabase } from './lib/supabase';
+import { getSubdomain } from './lib/getSubdomain';
 
 // Page components
 import Login from './pages/auth/Login';
@@ -10,7 +12,6 @@ import StudentDashboard from './pages/dashboards/StudentDashboard';
 import TeacherDashboard from './pages/dashboards/TeacherDashboard';
 import ParentDashboard from './pages/dashboards/ParentDashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
-import CompanyDashboard from './pages/dashboards/company';
 import NotFound from './pages/NotFound';
 import CourseView from './pages/courses/CourseView';
 import CourseCreate from './pages/courses/CourseCreate';
@@ -19,6 +20,7 @@ import SubscriptionPlans from './pages/subscriptions/SubscriptionPlans';
 import SubscriptionCheckout from './pages/subscriptions/SubscriptionCheckout';
 import Settings from './pages/settings/Settings';
 import LandingPage from './pages/LandingPage';
+
 
 // Auth guards
 const PrivateRoute = ({ children, allowedRoles }: { children: JSX.Element, allowedRoles: string[] }) => {
@@ -48,8 +50,9 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
 
 function App() {
   const { i18n } = useTranslation();
-  const { isAuthenticated, initialize } = useAuthStore();
+  const { initialize } = useAuthStore();
   const location = useLocation();
+  const [center, setCenter] = useState<any>(null);
 
   // Initialize the auth state
   useEffect(() => {
@@ -66,8 +69,27 @@ function App() {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  // Loading state while initializing auth
-  if (isAuthenticated === null) {
+  // Fetch center data based on subdomain
+  useEffect(() => {
+    const subdomain = getSubdomain();
+    if (!subdomain) return;
+
+    async function fetchCenter() {
+      const { data, error } = await supabase
+        .from("centers")
+        .select("*")
+        .eq("subdomain", subdomain)
+        .single();
+
+      if (error) console.error(error);
+      else setCenter(data);
+    }
+
+    fetchCenter();
+  }, []);
+
+  // Loading state while fetching center data if subdomain exists
+  if (getSubdomain() && !center) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center">
@@ -79,128 +101,123 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      
-      {/* Auth routes */}
-      <Route 
-        path="/login" 
-        element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        } 
-      />
-      <Route 
-        path="/register" 
-        element={
-          <PublicRoute>
-            <Register />
-          </PublicRoute>
-        } 
-      />
-      
-      {/* Dashboard routes */}
-      <Route 
-        path="/dashboard/student" 
-        element={
-          <PrivateRoute allowedRoles={['student']}>
-            <StudentDashboard />
-          </PrivateRoute>
-        } 
-      />
-      <Route 
-        path="/dashboard/teacher" 
-        element={
-          <PrivateRoute allowedRoles={['teacher']}>
-            <TeacherDashboard />
-          </PrivateRoute>
-        } 
-      />
-      <Route 
-        path="/dashboard/parent" 
-        element={
-          <PrivateRoute allowedRoles={['parent']}>
-            <ParentDashboard />
-          </PrivateRoute>
-        } 
-      />
-      <Route
-        path="/dashboard/admin"
-        element={
-          <PrivateRoute allowedRoles={['admin']}>
-            <AdminDashboard />
-          </PrivateRoute>
-        }
-      />
-      <Route
-        path="/dashboard/company"
-        element={
-          <PrivateRoute allowedRoles={['company']}>
-            <CompanyDashboard />
-          </PrivateRoute>
-        }
-      />
-      
-      {/* Course routes */}
-      <Route 
-        path="/courses/:courseId" 
-        element={
-          <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
-            <CourseView />
-          </PrivateRoute>
-        } 
-      />
-      <Route 
-        path="/courses/create" 
-        element={
-          <PrivateRoute allowedRoles={['teacher', 'admin']}>
-            <CourseCreate />
-          </PrivateRoute>
-        } 
-      />
-      
-      {/* Assignment routes */}
-      <Route 
-        path="/assignments/:assignmentId" 
-        element={
-          <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
-            <AssignmentView />
-          </PrivateRoute>
-        } 
-      />
-      
-      {/* Subscription routes */}
-      <Route 
-        path="/subscriptions" 
-        element={
-          <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
-            <SubscriptionPlans />
-          </PrivateRoute>
-        } 
-      />
-      <Route 
-        path="/subscriptions/checkout" 
-        element={
-          <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
-            <SubscriptionCheckout />
-          </PrivateRoute>
-        } 
-      />
-      
-      {/* Settings */}
-      <Route 
-        path="/settings" 
-        element={
-          <PrivateRoute allowedRoles={[]}>
-            <Settings />
-          </PrivateRoute>
-        } 
-      />
-      
-      {/* 404 */}
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <>
+      {center && <h1>Welcome to {center.name}</h1>}
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+
+        {/* Auth routes */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          }
+        />
+
+        {/* Dashboard routes */}
+        <Route
+          path="/dashboard/student"
+          element={
+            <PrivateRoute allowedRoles={['student']}>
+              <StudentDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dashboard/teacher"
+          element={
+            <PrivateRoute allowedRoles={['teacher']}>
+              <TeacherDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dashboard/parent"
+          element={
+            <PrivateRoute allowedRoles={['parent']}>
+              <ParentDashboard />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/dashboard/admin"
+          element={
+            <PrivateRoute allowedRoles={['admin']}>
+              <AdminDashboard />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Course routes */}
+        <Route
+          path="/courses/:courseId"
+          element={
+            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+              <CourseView />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/courses/create"
+          element={
+            <PrivateRoute allowedRoles={['teacher', 'admin']}>
+              <CourseCreate />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Assignment routes */}
+        <Route
+          path="/assignments/:assignmentId"
+          element={
+            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+              <AssignmentView />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Subscription routes */}
+        <Route
+          path="/subscriptions"
+          element={
+            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+              <SubscriptionPlans />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/subscriptions/checkout"
+          element={
+            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+              <SubscriptionCheckout />
+            </PrivateRoute>
+          }
+        />
+
+        {/* Settings */}
+        <Route
+          path="/settings"
+          element={
+            <PrivateRoute allowedRoles={[]}>
+              <Settings />
+            </PrivateRoute>
+          }
+        />
+
+        {/* 404 */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
   );
 }
 
