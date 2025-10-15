@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './store/authStore';
 import { supabase } from './lib/supabase';
-import { getSubdomain } from './lib/getSubdomain';
 
 // Page components
 import Login from './pages/auth/Login';
@@ -20,6 +19,7 @@ import SubscriptionPlans from './pages/subscriptions/SubscriptionPlans';
 import SubscriptionCheckout from './pages/subscriptions/SubscriptionCheckout';
 import Settings from './pages/settings/Settings';
 import LandingPage from './pages/LandingPage';
+import CenterPage from './pages/CenterPage'; // ✅ إضافة صفحة السنتر الجديدة
 
 // 🔐 Auth Guards
 const PrivateRoute = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles: string[] }) => {
@@ -47,11 +47,20 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
+// 🔹 دالة جديدة بدل getSubdomain
+function getCenterFromPath() {
+  const pathParts = window.location.pathname.split('/');
+  return pathParts[1] || null; // أول جزء بعد "/"
+}
+
 function App() {
   const { i18n } = useTranslation();
   const { initialize } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
   const [center, setCenter] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
   // 🔸 Initialize auth state
   useEffect(() => {
@@ -68,35 +77,65 @@ function App() {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  // 🔸 Fetch center data based on subdomain
+  // 🔸 Fetch center data based on URL path
   useEffect(() => {
-    const subdomain = getSubdomain();
-    if (!subdomain) return;
+    const centerSlug = getCenterFromPath();
+    if (!centerSlug) {
+      setCenter(null);
+      return;
+    }
 
     async function fetchCenter() {
+      setLoading(true);
+      setErrorMsg('');
       const { data, error } = await supabase
         .from('centers')
         .select('*')
-        .eq('subdomain', subdomain)
-        .maybeSingle(); // ✅ بدل single() لتجنب الخطأ PGRST116
+        .eq('slug', centerSlug)
+        .maybeSingle();
 
       if (error) {
         console.error('Supabase Error:', error.message);
+        setErrorMsg('حدث خطأ أثناء تحميل بيانات السنتر.');
+      } else if (!data) {
+        setErrorMsg('السنتر غير موجود.');
+        navigate('/404');
       } else {
         setCenter(data);
       }
+
+      setLoading(false);
     }
 
     fetchCenter();
-  }, []);
+  }, [location.pathname, navigate]);
 
   // 🔸 Loading State
-  if (getSubdomain() && !center) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="animate-pulse flex flex-col items-center">
           <div className="w-12 h-12 rounded-full bg-blue-500 mb-4"></div>
           <div className="h-4 w-24 bg-gray-300 rounded"></div>
+          <p className="mt-2 text-gray-600 text-sm">Loading center...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 🔸 Error State
+  if (errorMsg) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
+          <h2 className="text-xl font-semibold mb-2 text-red-600">Error</h2>
+          <p className="text-gray-600">{errorMsg}</p>
+          <button
+            onClick={() => navigate('/')}
+            className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
+          >
+            العودة للصفحة الرئيسية
+          </button>
         </div>
       </div>
     );
@@ -104,121 +143,132 @@ function App() {
 
   return (
     <>
-      {center && <h1 className="text-center text-2xl font-semibold mt-6">Welcome to {center.name}</h1>}
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
+      {center && (
+        <header className="text-center py-4 bg-blue-50 border-b border-blue-200 shadow-sm">
+          <h1 className="text-2xl font-semibold text-blue-700">Welcome to {center.name}</h1>
+          <p className="text-gray-500 text-sm mt-1">{center.address || 'Your learning center'}</p>
+        </header>
+      )}
 
-        {/* Auth routes */}
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
+      <main className="min-h-screen bg-gray-50">
+        <Routes>
+          {/* ✅ المسارات الأساسية */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/center/:centerSlug" element={<CenterPage />} />
 
-        {/* Dashboards */}
-        <Route
-          path="/dashboard/student"
-          element={
-            <PrivateRoute allowedRoles={['student']}>
-              <StudentDashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/dashboard/teacher"
-          element={
-            <PrivateRoute allowedRoles={['teacher']}>
-              <TeacherDashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/dashboard/parent"
-          element={
-            <PrivateRoute allowedRoles={['parent']}>
-              <ParentDashboard />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/dashboard/admin"
-          element={
-            <PrivateRoute allowedRoles={['admin']}>
-              <AdminDashboard />
-            </PrivateRoute>
-          }
-        />
+          {/* Auth Routes */}
+          <Route
+            path="/:centerSlug/login"
+            element={
+              <PublicRoute>
+                <Login />
+              </PublicRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/register"
+            element={
+              <PublicRoute>
+                <Register />
+              </PublicRoute>
+            }
+          />
 
-        {/* Courses */}
-        <Route
-          path="/courses/:courseId"
-          element={
-            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
-              <CourseView />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/courses/create"
-          element={
-            <PrivateRoute allowedRoles={['teacher', 'admin']}>
-              <CourseCreate />
-            </PrivateRoute>
-          }
-        />
+          {/* Dashboards */}
+          <Route
+            path="/:centerSlug/dashboard/student"
+            element={
+              <PrivateRoute allowedRoles={['student']}>
+                <StudentDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/dashboard/teacher"
+            element={
+              <PrivateRoute allowedRoles={['teacher']}>
+                <TeacherDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/dashboard/parent"
+            element={
+              <PrivateRoute allowedRoles={['parent']}>
+                <ParentDashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/dashboard/admin"
+            element={
+              <PrivateRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </PrivateRoute>
+            }
+          />
 
-        {/* Assignments */}
-        <Route
-          path="/assignments/:assignmentId"
-          element={
-            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
-              <AssignmentView />
-            </PrivateRoute>
-          }
-        />
+          {/* Courses */}
+          <Route
+            path="/:centerSlug/courses/:courseId"
+            element={
+              <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+                <CourseView />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/courses/create"
+            element={
+              <PrivateRoute allowedRoles={['teacher', 'admin']}>
+                <CourseCreate />
+              </PrivateRoute>
+            }
+          />
 
-        {/* Subscriptions */}
-        <Route
-          path="/subscriptions"
-          element={
-            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
-              <SubscriptionPlans />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/subscriptions/checkout"
-          element={
-            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
-              <SubscriptionCheckout />
-            </PrivateRoute>
-          }
-        />
+          {/* Assignments */}
+          <Route
+            path="/:centerSlug/assignments/:assignmentId"
+            element={
+              <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+                <AssignmentView />
+              </PrivateRoute>
+            }
+          />
 
-        {/* Settings */}
-        <Route
-          path="/settings"
-          element={
-            <PrivateRoute allowedRoles={[]}>
-              <Settings />
-            </PrivateRoute>
-          }
-        />
+          {/* Subscriptions */}
+          <Route
+            path="/:centerSlug/subscriptions"
+            element={
+              <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+                <SubscriptionPlans />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/:centerSlug/subscriptions/checkout"
+            element={
+              <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+                <SubscriptionCheckout />
+              </PrivateRoute>
+            }
+          />
 
-        {/* 404 */}
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+          {/* Settings */}
+          <Route
+            path="/:centerSlug/settings"
+            element={
+              <PrivateRoute allowedRoles={[]}>
+                <Settings />
+              </PrivateRoute>
+            }
+          />
+
+          {/* 404 */}
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </main>
     </>
   );
 }
