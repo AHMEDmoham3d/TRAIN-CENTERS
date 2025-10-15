@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './store/authStore';
 import { supabase } from './lib/supabase';
 
-// Page components
+// ✅ صفحات المشروع
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 import StudentDashboard from './pages/dashboards/StudentDashboard';
@@ -19,10 +19,16 @@ import SubscriptionPlans from './pages/subscriptions/SubscriptionPlans';
 import SubscriptionCheckout from './pages/subscriptions/SubscriptionCheckout';
 import Settings from './pages/settings/Settings';
 import LandingPage from './pages/LandingPage';
-import CenterPage from './pages/CenterPage'; // ✅ إضافة صفحة السنتر الجديدة
+import CenterPage from './pages/CenterPage';
 
 // 🔐 Auth Guards
-const PrivateRoute = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles: string[] }) => {
+const PrivateRoute = ({
+  children,
+  allowedRoles,
+}: {
+  children: JSX.Element;
+  allowedRoles: string[];
+}) => {
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
 
@@ -47,10 +53,11 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// 🔹 دالة جديدة بدل getSubdomain
-function getCenterFromPath() {
-  const pathParts = window.location.pathname.split('/');
-  return pathParts[1] || null; // أول جزء بعد "/"
+// 🔹 استخراج اسم السنتر من المسار
+function getCenterFromPath(): string | null {
+  const parts = window.location.pathname.split('/').filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts[0]?.trim().toLowerCase() || null;
 }
 
 function App() {
@@ -58,61 +65,68 @@ function App() {
   const { initialize } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
+
   const [center, setCenter] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
-  // 🔸 Initialize auth state
+  // 🔸 تهيئة حالة تسجيل الدخول
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // 🔸 Update document title
+  // 🔸 تحديث عنوان الصفحة
   useEffect(() => {
     document.title = 'Trainify - AI-Powered Learning Platform';
   }, [location]);
 
-  // 🔸 Handle language direction
+  // 🔸 ضبط اتجاه اللغة
   useEffect(() => {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  // 🔸 Fetch center data based on URL path
+  // 🔸 تحميل بيانات السنتر حسب المسار
   useEffect(() => {
-    const centerSlug = getCenterFromPath();
-    if (!centerSlug) {
+    const rawSlug = getCenterFromPath();
+
+    // لو المستخدم على الصفحة الرئيسية أو مسار عام
+    if (!rawSlug || ['login', 'register', '404'].includes(rawSlug)) {
       setCenter(null);
       return;
     }
 
-    async function fetchCenter() {
+    async function fetchCenter(centerSlug: string) {
       setLoading(true);
       setErrorMsg('');
-      console.log("🔍 Fetching center using subdomain:", centerSlug);
+
+      console.log('🔍 Fetching center using subdomain:', centerSlug);
 
       const { data, error } = await supabase
         .from('centers')
         .select('*')
-        .eq('subdomain', centerSlug) // ✅ تم التعديل هنا
+        .ilike('subdomain', centerSlug)
         .maybeSingle();
 
       if (error) {
-        console.error('Supabase Error:', error.message);
+        console.error('❌ Supabase Error:', error.message);
         setErrorMsg('حدث خطأ أثناء تحميل بيانات السنتر.');
       } else if (!data) {
+        console.warn('⚠️ Center not found for:', centerSlug);
         setErrorMsg('السنتر غير موجود.');
-        navigate('/404');
       } else {
+        console.log('✅ Center loaded successfully:', data);
         setCenter(data);
       }
 
       setLoading(false);
     }
 
-    fetchCenter();
-  }, [location.pathname, navigate]);
+    if (rawSlug) {
+      fetchCenter(rawSlug);
+    }
+  }, [location.pathname]);
 
-  // 🔸 Loading State
+  // 🔸 حالة التحميل
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -125,7 +139,7 @@ function App() {
     );
   }
 
-  // 🔸 Error State
+  // 🔸 حالة الخطأ
   if (errorMsg) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -143,18 +157,23 @@ function App() {
     );
   }
 
+  // 🔸 عرض الواجهة
   return (
     <>
       {center && (
         <header className="text-center py-4 bg-blue-50 border-b border-blue-200 shadow-sm">
-          <h1 className="text-2xl font-semibold text-blue-700">Welcome to {center.name}</h1>
-          <p className="text-gray-500 text-sm mt-1">{center.address || 'Your learning center'}</p>
+          <h1 className="text-2xl font-semibold text-blue-700">
+            Welcome to {center.name}
+          </h1>
+          <p className="text-gray-500 text-sm mt-1">
+            {center.address || 'Your learning center'}
+          </p>
         </header>
       )}
 
       <main className="min-h-screen bg-gray-50">
         <Routes>
-          {/* ✅ المسارات الأساسية */}
+          {/* ✅ المسارات العامة */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/center/:centerSlug" element={<CenterPage />} />
