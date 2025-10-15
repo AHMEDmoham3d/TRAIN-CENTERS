@@ -88,10 +88,12 @@ function App() {
     async function fetchCenter() {
       setLoading(true);
       setErrorMsg('');
+      console.log("🔍 Fetching center using subdomain:", centerSlug);
+
       const { data, error } = await supabase
         .from('centers')
         .select('*')
-        .eq('slug', centerSlug)
+        .eq('subdomain', centerSlug) // ✅ تم التعديل هنا
         .maybeSingle();
 
       if (error) {
