@@ -21,9 +21,8 @@ import SubscriptionCheckout from './pages/subscriptions/SubscriptionCheckout';
 import Settings from './pages/settings/Settings';
 import LandingPage from './pages/LandingPage';
 
-
-// Auth guards
-const PrivateRoute = ({ children, allowedRoles }: { children: JSX.Element, allowedRoles: string[] }) => {
+// 🔐 Auth Guards
+const PrivateRoute = ({ children, allowedRoles }: { children: JSX.Element; allowedRoles: string[] }) => {
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
 
@@ -54,46 +53,49 @@ function App() {
   const location = useLocation();
   const [center, setCenter] = useState<any>(null);
 
-  // Initialize the auth state
+  // 🔸 Initialize auth state
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // Update the document title based on the route
+  // 🔸 Update document title
   useEffect(() => {
     document.title = 'Trainify - AI-Powered Learning Platform';
   }, [location]);
 
-  // Set the HTML direction based on the language
+  // 🔸 Handle language direction
   useEffect(() => {
     document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
   }, [i18n.language]);
 
-  // Fetch center data based on subdomain
+  // 🔸 Fetch center data based on subdomain
   useEffect(() => {
     const subdomain = getSubdomain();
     if (!subdomain) return;
 
     async function fetchCenter() {
       const { data, error } = await supabase
-        .from("centers")
-        .select("*")
-        .eq("subdomain", subdomain)
-        .single();
+        .from('centers')
+        .select('*')
+        .eq('subdomain', subdomain)
+        .maybeSingle(); // ✅ بدل single() لتجنب الخطأ PGRST116
 
-      if (error) console.error(error);
-      else setCenter(data);
+      if (error) {
+        console.error('Supabase Error:', error.message);
+      } else {
+        setCenter(data);
+      }
     }
 
     fetchCenter();
   }, []);
 
-  // Loading state while fetching center data if subdomain exists
+  // 🔸 Loading State
   if (getSubdomain() && !center) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 rounded-full bg-primary-500 mb-4"></div>
+          <div className="w-12 h-12 rounded-full bg-blue-500 mb-4"></div>
           <div className="h-4 w-24 bg-gray-300 rounded"></div>
         </div>
       </div>
@@ -102,7 +104,7 @@ function App() {
 
   return (
     <>
-      {center && <h1>Welcome to {center.name}</h1>}
+      {center && <h1 className="text-center text-2xl font-semibold mt-6">Welcome to {center.name}</h1>}
       <Routes>
         <Route path="/" element={<LandingPage />} />
 
@@ -124,7 +126,7 @@ function App() {
           }
         />
 
-        {/* Dashboard routes */}
+        {/* Dashboards */}
         <Route
           path="/dashboard/student"
           element={
@@ -158,7 +160,7 @@ function App() {
           }
         />
 
-        {/* Course routes */}
+        {/* Courses */}
         <Route
           path="/courses/:courseId"
           element={
@@ -176,7 +178,7 @@ function App() {
           }
         />
 
-        {/* Assignment routes */}
+        {/* Assignments */}
         <Route
           path="/assignments/:assignmentId"
           element={
@@ -186,7 +188,7 @@ function App() {
           }
         />
 
-        {/* Subscription routes */}
+        {/* Subscriptions */}
         <Route
           path="/subscriptions"
           element={
