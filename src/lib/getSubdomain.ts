@@ -1,29 +1,27 @@
 // export function getSubdomain() {
 //   if (typeof window === "undefined") return null;
 
-//   const host = window.location.hostname;
+//   const path = window.location.pathname; // مثال: "/alex/dashboard"
+//   const parts = path.split("/").filter(Boolean); // ["alex", "dashboard"]
 
-//   // أثناء التطوير على localhost
-//   if (host === "localhost" || host.includes("127.0.0.1")) {
-//     return null;
+//   // أول جزء من المسار هو اسم المركز
+//   if (parts.length > 0) {
+//     return parts[0]; // alex
 //   }
 
-//   const parts = host.split(".");
-//   if (parts.length > 2) return parts[0]; // مثل center1.example.com → center1
-//   return null;
+//   return null; // لو مفيش مسار بعد الدومين
 // }
-// lib/getSubdomain.ts
-
 export function getSubdomain() {
   if (typeof window === "undefined") return null;
 
-  const path = window.location.pathname; // مثال: "/alex/dashboard"
-  const parts = path.split("/").filter(Boolean); // ["alex", "dashboard"]
+  const path = window.location.pathname;
+  const parts = path.split("/").filter(Boolean);
 
-  // أول جزء من المسار هو اسم المركز
+  console.log("🔍 Path parts:", parts); // ← ده السطر الجديد
+
   if (parts.length > 0) {
-    return parts[0]; // alex
+    return parts[0].trim().toLowerCase();
   }
 
-  return null; // لو مفيش مسار بعد الدومين
+  return null;
 }
