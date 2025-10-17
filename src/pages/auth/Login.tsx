@@ -184,72 +184,110 @@
 
 // export default Login;
 
-import React, { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { Layers, ArrowRight, Loader2 } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import LanguageSwitcher from '../../components/ui/LanguageSwitcher';
+import React, { useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { Layers, ArrowRight, Loader2 } from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
 
 const Login: React.FC = () => {
-  const { t } = useTranslation();
   const navigate = useNavigate();
   const { centerSlug } = useParams<{ centerSlug: string }>();
 
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setErrorMsg('');
+    setErrorMsg("");
 
     try {
-      // ✅ تحقق من وجود السنتر أولاً
+      // ✅ Step 1: Verify the center exists
       const { data: center, error: centerError } = await supabase
-        .from('centers')
-        .select('*')
-        .ilike('subdomain', centerSlug || '')
+        .from("centers")
+        .select("*")
+        .ilike("subdomain", centerSlug || "")
         .maybeSingle();
 
       if (centerError || !center) {
-        setErrorMsg('السنتر غير موجود.');
+        setErrorMsg("This center does not exist.");
         setLoading(false);
         return;
       }
 
-      // ✅ تحقق من وجود المستخدم داخل هذا السنتر
+      // ✅ Step 2: Check if the user exists in the users table
       const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password)
-        .eq('center_id', center.id)
+        .from("users")
+        .select("*")
+        .eq("email", email)
+        .eq("password", password)
         .maybeSingle();
 
       if (userError || !user) {
-        setErrorMsg('بيانات الدخول غير صحيحة.');
+        setErrorMsg("Invalid email or password.");
         setLoading(false);
         return;
       }
 
-      // ✅ محاولة تسجيل دخول باستخدام Supabase Auth (اختياري)
+      // ✅ Step 3: Check if this user belongs to this center
+      let validUser = false;
+
+      if (user.role === "student") {
+        const { data: student } = await supabase
+          .from("students")
+          .select("*")
+          .eq("email", email)
+          .eq("center_id", center.id)
+          .maybeSingle();
+
+        if (student) validUser = true;
+      } else if (user.role === "teacher") {
+        const { data: teacher } = await supabase
+          .from("teachers")
+          .select("*")
+          .eq("email", email)
+          .eq("center_id", center.id)
+          .maybeSingle();
+
+        if (teacher) validUser = true;
+      } else if (user.role === "admin") {
+        const { data: admin } = await supabase
+          .from("admins")
+          .select("*")
+          .eq("email", email)
+          .eq("center_id", center.id)
+          .maybeSingle();
+
+        if (admin) validUser = true;
+      } else if (user.role === "center") {
+        // Center owner login
+        if (user.email === center.email) validUser = true;
+      }
+
+      if (!validUser) {
+        setErrorMsg("This user does not belong to this center.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Step 4: Attempt Supabase Auth login (optional)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
-        console.warn('Supabase Auth فشل — سيتم استخدام التحقق اليدوي فقط');
+        console.warn("Supabase Auth failed. Using manual verification only.");
       }
 
-      // ✅ نجاح التحقق — الانتقال إلى لوحة التحكم الخاصة بالسنتر
-      navigate(`/${centerSlug}/dashboard/${user.role?.toLowerCase() || 'student'}`);
+      // ✅ Step 5: Navigate to the dashboard based on role
+      navigate(`/${centerSlug}/dashboard/${user.role?.toLowerCase() || "student"}`);
     } catch (err) {
-      console.error('Login error:', err);
-      setErrorMsg('حدث خطأ أثناء تسجيل الدخول، برجاء المحاولة لاحقاً.');
+      console.error("Login error:", err);
+      setErrorMsg("An unexpected error occurred. Please try again later.");
     }
 
     setLoading(false);
@@ -262,9 +300,11 @@ const Login: React.FC = () => {
           <Layers className="mx-auto h-12 w-auto text-primary-500" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          {t('general.appName')}
+          EduTech Platform
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">{t('general.slogan')}</p>
+        <p className="mt-2 text-center text-sm text-gray-600">
+          Sign in to access your learning center
+        </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -276,36 +316,36 @@ const Login: React.FC = () => {
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                {t('auth.email')}
+                Email
               </label>
               <div className="mt-1">
                 <input
                   id="email"
                   name="email"
                   type="email"
-                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  placeholder="you@example.com"
                 />
               </div>
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                {t('auth.password')}
+                Password
               </label>
               <div className="mt-1">
                 <input
                   id="password"
                   name="password"
                   type="password"
-                  autoComplete="current-password"
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  placeholder="Enter your password"
                 />
               </div>
             </div>
@@ -322,7 +362,7 @@ const Login: React.FC = () => {
                 disabled={loading}
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : t('auth.login')}
+                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
               </button>
             </div>
           </form>
@@ -333,16 +373,18 @@ const Login: React.FC = () => {
                 <div className="w-full border-t border-gray-300" />
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">{t('auth.dontHaveAccount')}</span>
+                <span className="px-2 bg-white text-gray-500">
+                  Don’t have an account?
+                </span>
               </div>
             </div>
 
             <div className="mt-6">
               <Link
-                to={centerSlug ? `/${centerSlug}/register` : '/register'}
+                to={centerSlug ? `/${centerSlug}/register` : "/register"}
                 className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
               >
-                {t('auth.signup')}
+                Sign up
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </div>
