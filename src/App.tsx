@@ -293,8 +293,9 @@
 //     </>
 //   );
 // }
-import { useEffect, useState } from 'react';
-import { Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom';
+
+import { useEffect } from 'react';
+import { Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from './store/authStore';
 import { supabase } from './lib/supabase';
@@ -354,83 +355,19 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ صفحة السنتر بعد تسجيل الدخول فقط
-function CenterProtectedPage() {
-  const { centerSlug } = useParams();
-  const { isAuthenticated, user } = useAuthStore();
-  const [center, setCenter] = useState<any>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [errorMsg, setErrorMsg] = useState<string>('');
+// ✅ مكون لحفظ اسم السنتر من الرابط
+function CenterDetector() {
+  const { centerSlug } = useParams<{ centerSlug?: string }>();
 
   useEffect(() => {
-    async function fetchCenter() {
-      if (!isAuthenticated) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const { data, error } = await supabase
-          .from('centers')
-          .select('*')
-          .ilike('subdomain', centerSlug || '')
-          .maybeSingle();
-
-        if (error) {
-          console.error('❌ Supabase Error:', error.message);
-          setErrorMsg('حدث خطأ أثناء تحميل بيانات السنتر.');
-        } else if (!data) {
-          setErrorMsg('السنتر غير موجود.');
-        } else {
-          setCenter(data);
-        }
-      } catch (err) {
-        console.error(err);
-        setErrorMsg('حدث خطأ غير متوقع.');
-      }
-
-      setLoading(false);
+    if (centerSlug) {
+      localStorage.setItem('center_subdomain', centerSlug.trim());
+    } else {
+      localStorage.removeItem('center_subdomain');
     }
+  }, [centerSlug]);
 
-    fetchCenter();
-  }, [centerSlug, isAuthenticated]);
-
-  if (!isAuthenticated) return <LandingPage />;
-
-  if (loading)
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="animate-pulse flex flex-col items-center">
-          <div className="w-12 h-12 rounded-full bg-blue-500 mb-4"></div>
-          <div className="h-4 w-24 bg-gray-300 rounded"></div>
-          <p className="mt-2 text-gray-600 text-sm">Loading center...</p>
-        </div>
-      </div>
-    );
-
-  if (errorMsg)
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-8 rounded-2xl shadow-lg text-center">
-          <h2 className="text-xl font-semibold mb-2 text-red-600">Error</h2>
-          <p className="text-gray-600">{errorMsg}</p>
-          <a
-            href="/"
-            className="mt-4 inline-block bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition"
-          >
-            العودة للصفحة الرئيسية
-          </a>
-        </div>
-      </div>
-    );
-
-  // ✅ لو المستخدم تبع نفس السنتر
-  if (user && user.center_subdomain === centerSlug) {
-    return <CenterPage />;
-  }
-
-  // ❌ المستخدم مش تبع السنتر ده
-  return <Navigate to="/" replace />;
+  return <LandingPage />;
 }
 
 function App() {
@@ -443,7 +380,7 @@ function App() {
   }, [initialize]);
 
   useEffect(() => {
-    document.title = 'Trainify - AI-Powered Learning Platform';
+    document.title = 'EduTech - AI Learning Platform';
   }, [location]);
 
   useEffect(() => {
@@ -453,10 +390,10 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ الصفحة العامة */}
+        {/* ✅ الصفحة الرئيسية */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* ✅ تسجيل الدخول والتسجيل */}
+        {/* ✅ صفحات الدخول والتسجيل */}
         <Route
           path="/login"
           element={
@@ -474,13 +411,10 @@ function App() {
           }
         />
 
-        {/* ✅ المسارات الخاصة بالسنتر */}
-        <Route path="/:centerSlug" element={<LandingPage />} />
-        <Route
-          path="/:centerSlug/dashboard"
-          element={<CenterProtectedPage />}
-        />
+        {/* ✅ أي subdomain يفتح نفس الصفحة العادية + حفظ اسم السنتر */}
+        <Route path="/:centerSlug" element={<CenterDetector />} />
 
+        {/* ✅ الداشبورد الخاصة بالسنتر */}
         <Route
           path="/:centerSlug/dashboard/student"
           element={

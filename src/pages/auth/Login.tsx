@@ -183,16 +183,14 @@
 // };
 
 // export default Login;
-
 import React, { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
-  const { centerSlug } = useParams<{ centerSlug: string }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -205,20 +203,29 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // ✅ Step 1: Verify the center exists
-      const { data: center, error: centerError } = await supabase
-        .from("centers")
-        .select("*")
-        .ilike("subdomain", centerSlug || "")
-        .maybeSingle();
+      // ✅ استرجاع اسم السنتر من localStorage
+      const centerSlug = localStorage.getItem("center_subdomain");
 
-      if (centerError || !center) {
-        setErrorMsg("This center does not exist.");
+      if (!centerSlug) {
+        setErrorMsg("⚠️ لم يتم تحديد المركز. من فضلك ادخل من رابط المركز.");
         setLoading(false);
         return;
       }
 
-      // ✅ Step 2: Check if the user exists in the users table
+      // ✅ التأكد من وجود السنتر في قاعدة البيانات
+      const { data: center, error: centerError } = await supabase
+        .from("centers")
+        .select("*")
+        .ilike("subdomain", centerSlug)
+        .maybeSingle();
+
+      if (centerError || !center) {
+        setErrorMsg("❌ هذا المركز غير موجود.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ البحث عن المستخدم في جدول users
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -227,67 +234,65 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (userError || !user) {
-        setErrorMsg("Invalid email or password.");
+        setErrorMsg("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.");
         setLoading(false);
         return;
       }
 
-      // ✅ Step 3: Check if this user belongs to this center
+      // ✅ التأكد من أن المستخدم ينتمي لنفس السنتر
       let validUser = false;
 
-      if (user.role === "student") {
+      const role = user.role?.toLowerCase();
+
+      if (role === "student") {
         const { data: student } = await supabase
           .from("students")
           .select("*")
           .eq("email", email)
           .eq("center_id", center.id)
           .maybeSingle();
-
         if (student) validUser = true;
-      } else if (user.role === "teacher") {
+      } else if (role === "teacher") {
         const { data: teacher } = await supabase
           .from("teachers")
           .select("*")
           .eq("email", email)
           .eq("center_id", center.id)
           .maybeSingle();
-
         if (teacher) validUser = true;
-      } else if (user.role === "admin") {
+      } else if (role === "admin") {
         const { data: admin } = await supabase
           .from("admins")
           .select("*")
           .eq("email", email)
           .eq("center_id", center.id)
           .maybeSingle();
-
         if (admin) validUser = true;
-      } else if (user.role === "center") {
-        // Center owner login
-        if (user.email === center.email) validUser = true;
+      } else if (role === "center" && user.email === center.email) {
+        validUser = true;
       }
 
       if (!validUser) {
-        setErrorMsg("This user does not belong to this center.");
+        setErrorMsg("❌ هذا المستخدم لا ينتمي إلى هذا المركز.");
         setLoading(false);
         return;
       }
 
-      // ✅ Step 4: Attempt Supabase Auth login (optional)
+      // ✅ تسجيل الدخول باستخدام Supabase Auth (اختياري)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
-        console.warn("Supabase Auth failed. Using manual verification only.");
+        console.warn("⚠️ فشل تسجيل الدخول عبر Supabase Auth، سيتم المتابعة يدويًا.");
       }
 
-      // ✅ Step 5: Navigate to the dashboard based on role
-      navigate(`/${centerSlug}/dashboard/${user.role?.toLowerCase() || "student"}`);
+      // ✅ الانتقال إلى الداشبورد بناءً على الدور
+      navigate(`/${centerSlug}/dashboard/${role || "student"}`);
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("An unexpected error occurred. Please try again later.");
+      setErrorMsg("حدث خطأ غير متوقع. حاول مرة أخرى لاحقًا.");
     }
 
     setLoading(false);
@@ -367,27 +372,15 @@ const Login: React.FC = () => {
             </div>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">
-                  Don’t have an account?
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <Link
-                to={centerSlug ? `/${centerSlug}/register` : "/register"}
-                className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-              >
-                Sign up
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </div>
+          <div className="mt-6 text-center">
+            <div className="text-sm text-gray-600 mb-3">Don’t have an account?</div>
+            <Link
+              to="/register"
+              className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              Sign up
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Link>
           </div>
         </div>
       </div>
