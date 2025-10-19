@@ -181,21 +181,27 @@
 //     </div>
 //   );
 // };
-
-// export default Login;
-import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
+  const { centerSlug } = useParams<{ centerSlug?: string }>();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // ✅ حفظ centerSlug في localStorage لو موجود
+  useEffect(() => {
+    if (centerSlug) {
+      localStorage.setItem("center_subdomain", centerSlug);
+    }
+  }, [centerSlug]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,10 +209,11 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // ✅ استرجاع اسم السنتر من localStorage
-      const centerSlug = localStorage.getItem("center_subdomain");
+      // ✅ استرجاع اسم السنتر من الرابط أو من localStorage
+      const currentCenter =
+        centerSlug || localStorage.getItem("center_subdomain");
 
-      if (!centerSlug) {
+      if (!currentCenter) {
         setErrorMsg("⚠️ لم يتم تحديد المركز. من فضلك ادخل من رابط المركز.");
         setLoading(false);
         return;
@@ -216,7 +223,7 @@ const Login: React.FC = () => {
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
-        .ilike("subdomain", centerSlug)
+        .ilike("subdomain", currentCenter)
         .maybeSingle();
 
       if (centerError || !center) {
@@ -241,7 +248,6 @@ const Login: React.FC = () => {
 
       // ✅ التأكد من أن المستخدم ينتمي لنفس السنتر
       let validUser = false;
-
       const role = user.role?.toLowerCase();
 
       if (role === "student") {
@@ -289,7 +295,7 @@ const Login: React.FC = () => {
       }
 
       // ✅ الانتقال إلى الداشبورد بناءً على الدور
-      navigate(`/${centerSlug}/dashboard/${role || "student"}`);
+      navigate(`/${currentCenter}/dashboard/${role || "student"}`);
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("حدث خطأ غير متوقع. حاول مرة أخرى لاحقًا.");
@@ -375,7 +381,7 @@ const Login: React.FC = () => {
           <div className="mt-6 text-center">
             <div className="text-sm text-gray-600 mb-3">Don’t have an account?</div>
             <Link
-              to="/register"
+              to={centerSlug ? `/${centerSlug}/register` : "/register"}
               className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
             >
               Sign up
