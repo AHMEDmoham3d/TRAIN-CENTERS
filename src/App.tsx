@@ -293,6 +293,8 @@
 //     </>
 //   );
 // }
+
+
 import { useEffect } from "react";
 import { Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -334,7 +336,12 @@ const PrivateRoute = ({
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`} replace />;
+    return (
+      <Navigate
+        to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`}
+        replace
+      />
+    );
   }
 
   return children;
@@ -391,27 +398,13 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        {/* ✅ Redirect /login → /gammal/login */}
+        <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
 
-        {/* ✅ Public login/register */}
-        <Route
-          path="/login"
-          element={
-            <PublicRoute>
-              <Login />
-            </PublicRoute>
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
+        {/* ✅ Redirect /register → /gammal/register */}
+        <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Center login/register */}
+        {/* ✅ Public login/register for each center */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -521,6 +514,9 @@ function App() {
             </PrivateRoute>
           }
         />
+
+        {/* ✅ Default route */}
+        <Route path="/" element={<LandingPage />} />
 
         {/* ❌ Not found */}
         <Route path="*" element={<NotFound />} />

@@ -181,6 +181,8 @@
 //     </div>
 //   );
 // };
+// 📁 src/pages/auth/Login.jsx
+
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
@@ -196,10 +198,12 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ Save subdomain (centerSlug) locally when available
   useEffect(() => {
     if (centerSlug) localStorage.setItem("center_subdomain", centerSlug.trim());
   }, [centerSlug]);
 
+  // ✅ Handle login form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -227,13 +231,12 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Look for user in users table WITH center_id filter
+      // ✅ Find user in 'users' table (without filtering by center_id)
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
         .eq("password", password)
-        .eq("center_id", center.id)
         .maybeSingle();
 
       if (userError || !user) {
@@ -242,7 +245,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Sign in using Supabase Auth (optional)
+      // ✅ Try signing in using Supabase Auth (not required but useful)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -250,7 +253,21 @@ const Login: React.FC = () => {
 
       if (signInError) console.warn("⚠️ Supabase Auth failed, continuing manually.");
 
-      // ✅ Redirect to dashboard (always using centerSlug)
+      // ✅ Verify that user belongs to this center via 'students' table
+      const { data: student } = await supabase
+        .from("students")
+        .select("*")
+        .eq("email", email.trim())
+        .eq("center_id", center.id)
+        .maybeSingle();
+
+      if (!student) {
+        setErrorMsg("❌ You are not registered in this center.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Determine role and navigate to dashboard
       const role = user.role?.toLowerCase() || "student";
       navigate(`/${currentCenter}/dashboard/${role}`, { replace: true });
     } catch (err) {
