@@ -182,7 +182,6 @@
 //   );
 // };
 // 📁 src/pages/auth/Login.jsx
-
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
@@ -198,12 +197,14 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ Save subdomain (centerSlug) locally when available
+  // ✅ Store centerSlug locally
   useEffect(() => {
-    if (centerSlug) localStorage.setItem("center_subdomain", centerSlug.trim());
+    if (centerSlug) {
+      localStorage.setItem("center_subdomain", centerSlug.trim());
+    }
   }, [centerSlug]);
 
-  // ✅ Handle login form submission
+  // ✅ Login handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -211,14 +212,13 @@ const Login: React.FC = () => {
 
     try {
       const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
-
       if (!currentCenter) {
         setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
         setLoading(false);
         return;
       }
 
-      // ✅ Check if center exists
+      // ✅ Verify the center exists
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -231,44 +231,54 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Find user in 'users' table (without filtering by center_id)
-      const { data: user, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", email.trim())
-        .eq("password", password)
-        .maybeSingle();
-
-      if (userError || !user) {
-        setErrorMsg("❌ Incorrect email or password.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ Try signing in using Supabase Auth (not required but useful)
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      // ✅ Try signing in with Supabase Auth first
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password,
       });
 
-      if (signInError) console.warn("⚠️ Supabase Auth failed, continuing manually.");
+      if (authError) {
+        console.warn("Supabase Auth failed, checking local tables...");
+      }
 
-      // ✅ Verify that user belongs to this center via 'students' table
-      const { data: student } = await supabase
+      // ✅ Check if user exists in `students` table (belongs to this center)
+      const { data: student, error: studentError } = await supabase
         .from("students")
         .select("*")
         .eq("email", email.trim())
         .eq("center_id", center.id)
         .maybeSingle();
 
-      if (!student) {
-        setErrorMsg("❌ You are not registered in this center.");
+      if (studentError) {
+        console.error("Student query error:", studentError);
+      }
+
+      // ✅ Check if user exists in `users` table (center-level users)
+      const { data: user, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", email.trim())
+        .eq("center_id", center.id)
+        .maybeSingle();
+
+      if (userError) {
+        console.error("User query error:", userError);
+      }
+
+      // ✅ Final validation
+      if (!authData?.user && !student && !user) {
+        setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
       }
 
-      // ✅ Determine role and navigate to dashboard
-      const role = user.role?.toLowerCase() || "student";
+      // ✅ Determine user role
+      const role =
+        user?.role?.toLowerCase() ||
+        student?.role?.toLowerCase() ||
+        "student";
+
+      // ✅ Navigate to correct dashboard
       navigate(`/${currentCenter}/dashboard/${role}`, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
