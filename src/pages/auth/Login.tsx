@@ -197,9 +197,10 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ Save the centerSlug in localStorage (if exists)
   useEffect(() => {
     if (centerSlug) {
-      localStorage.setItem("center_subdomain", centerSlug);
+      localStorage.setItem("center_subdomain", centerSlug.trim());
     }
   }, [centerSlug]);
 
@@ -213,11 +214,12 @@ const Login: React.FC = () => {
         centerSlug || localStorage.getItem("center_subdomain");
 
       if (!currentCenter) {
-        setErrorMsg("⚠️ لم يتم تحديد المركز. من فضلك ادخل من رابط المركز.");
+        setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
         setLoading(false);
         return;
       }
 
+      // ✅ Verify center existence
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -225,11 +227,12 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (centerError || !center) {
-        setErrorMsg("❌ هذا المركز غير موجود.");
+        setErrorMsg("❌ This center does not exist.");
         setLoading(false);
         return;
       }
 
+      // ✅ Find the user in users table
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -238,13 +241,14 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (userError || !user) {
-        setErrorMsg("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
       }
 
-      let validUser = false;
+      // ✅ Check if the user belongs to the current center
       const role = user.role?.toLowerCase();
+      let validUser = false;
 
       if (role === "student") {
         const { data: student } = await supabase
@@ -275,24 +279,28 @@ const Login: React.FC = () => {
       }
 
       if (!validUser) {
-        setErrorMsg("❌ هذا المستخدم لا ينتمي إلى هذا المركز.");
+        setErrorMsg("❌ This user does not belong to this center.");
         setLoading(false);
         return;
       }
 
+      // ✅ Sign in (optional) using Supabase Auth
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (signInError) {
-        console.warn("⚠️ فشل تسجيل الدخول عبر Supabase Auth، سيتم المتابعة يدويًا.");
+        console.warn("⚠️ Supabase Auth failed, proceeding manually.");
       }
 
-      navigate(`/${currentCenter}/dashboard/${role || "student"}`);
+      // ✅ Navigate to correct dashboard (always using the centerSlug)
+      navigate(`/${currentCenter}/dashboard/${role || "student"}`, {
+        replace: true,
+      });
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("حدث خطأ غير متوقع. حاول مرة أخرى لاحقًا.");
+      setErrorMsg("Unexpected error occurred. Please try again later.");
     }
 
     setLoading(false);
