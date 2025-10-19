@@ -197,14 +197,14 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ Store centerSlug locally
+  // ✅ Save centerSlug in localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
     }
   }, [centerSlug]);
 
-  // ✅ Login handler
+  // ✅ Handle login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -212,13 +212,14 @@ const Login: React.FC = () => {
 
     try {
       const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
+
       if (!currentCenter) {
         setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
         setLoading(false);
         return;
       }
 
-      // ✅ Verify the center exists
+      // ✅ Verify if center exists
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -231,17 +232,17 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Try signing in with Supabase Auth first
+      // ✅ Try to log in with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
       });
 
       if (authError) {
-        console.warn("⚠️ Supabase Auth failed, checking local tables...");
+        console.warn("Supabase Auth failed, checking local tables...");
       }
 
-      // ✅ Check if user exists in `students` table (belongs to this center)
+      // ✅ Check if student exists in this center
       const { data: student, error: studentError } = await supabase
         .from("students")
         .select("*")
@@ -253,7 +254,7 @@ const Login: React.FC = () => {
         console.error("Student query error:", studentError);
       }
 
-      // ✅ Check if user exists in `users` table (center-level users)
+      // ✅ Check if user exists in this center
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -272,25 +273,22 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Determine user role
+      // ✅ Detect user role
       const role =
         user?.role?.toLowerCase() ||
         student?.role?.toLowerCase() ||
         "student";
 
-      // ✅ Build safe redirect path
+      // ✅ Safe redirect path
       const safePath = `/${currentCenter}/dashboard/${role}`;
 
-      // ✅ Prevent invalid absolute URLs that trigger SecurityError
       if (safePath.startsWith("http")) {
-        console.error("❌ Invalid redirect path:", safePath);
-        setErrorMsg("Invalid redirect path. Please contact support.");
-        setLoading(false);
-        return;
+        console.error("Invalid path detected:", safePath);
+        setErrorMsg("Invalid redirect URL.");
+      } else {
+        navigate(safePath, { replace: true });
       }
 
-      // ✅ Navigate safely
-      navigate(safePath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("Unexpected error occurred. Please try again later.");
