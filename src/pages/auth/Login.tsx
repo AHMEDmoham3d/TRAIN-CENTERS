@@ -181,7 +181,6 @@
 //     </div>
 //   );
 // };
-
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
@@ -197,11 +196,8 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ Save the centerSlug in localStorage (if exists)
   useEffect(() => {
-    if (centerSlug) {
-      localStorage.setItem("center_subdomain", centerSlug.trim());
-    }
+    if (centerSlug) localStorage.setItem("center_subdomain", centerSlug.trim());
   }, [centerSlug]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,8 +206,7 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      const currentCenter =
-        centerSlug || localStorage.getItem("center_subdomain");
+      const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
 
       if (!currentCenter) {
         setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
@@ -219,7 +214,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Verify center existence
+      // ✅ Check if center exists
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -232,12 +227,13 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Find the user in users table
+      // ✅ Look for user in users table WITH center_id filter
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
-        .eq("email", email)
+        .eq("email", email.trim())
         .eq("password", password)
+        .eq("center_id", center.id)
         .maybeSingle();
 
       if (userError || !user) {
@@ -246,58 +242,17 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ Check if the user belongs to the current center
-      const role = user.role?.toLowerCase();
-      let validUser = false;
-
-      if (role === "student") {
-        const { data: student } = await supabase
-          .from("students")
-          .select("*")
-          .eq("email", email)
-          .eq("center_id", center.id)
-          .maybeSingle();
-        if (student) validUser = true;
-      } else if (role === "teacher") {
-        const { data: teacher } = await supabase
-          .from("teachers")
-          .select("*")
-          .eq("email", email)
-          .eq("center_id", center.id)
-          .maybeSingle();
-        if (teacher) validUser = true;
-      } else if (role === "admin") {
-        const { data: admin } = await supabase
-          .from("admins")
-          .select("*")
-          .eq("email", email)
-          .eq("center_id", center.id)
-          .maybeSingle();
-        if (admin) validUser = true;
-      } else if (role === "center" && user.email === center.email) {
-        validUser = true;
-      }
-
-      if (!validUser) {
-        setErrorMsg("❌ This user does not belong to this center.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ Sign in (optional) using Supabase Auth
+      // ✅ Sign in using Supabase Auth (optional)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (signInError) {
-        console.warn("⚠️ Supabase Auth failed, proceeding manually.");
-      }
+      if (signInError) console.warn("⚠️ Supabase Auth failed, continuing manually.");
 
-      // ✅ Navigate to correct dashboard (always using the centerSlug)
-      navigate(`/${currentCenter}/dashboard/${role || "student"}`, {
-        replace: true,
-      });
+      // ✅ Redirect to dashboard (always using centerSlug)
+      const role = user.role?.toLowerCase() || "student";
+      navigate(`/${currentCenter}/dashboard/${role}`, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("Unexpected error occurred. Please try again later.");
@@ -334,7 +289,6 @@ const Login: React.FC = () => {
               <div className="mt-1">
                 <input
                   id="email"
-                  name="email"
                   type="email"
                   required
                   value={email}
@@ -352,7 +306,6 @@ const Login: React.FC = () => {
               <div className="mt-1">
                 <input
                   id="password"
-                  name="password"
                   type="password"
                   required
                   value={password}

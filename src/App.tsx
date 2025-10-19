@@ -299,7 +299,7 @@ import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
 import { supabase } from "./lib/supabase";
 
-// ✅ الصفحات
+// ✅ Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -316,7 +316,7 @@ import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 import CenterPage from "./pages/CenterPage";
 
-// 🔐 حماية الصفحات الخاصة
+// 🔐 Protected route
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -328,7 +328,9 @@ const PrivateRoute = ({
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to={`${location.pathname.split("/")[1] ? `/${location.pathname.split("/")[1]}/login` : "/login"}`} state={{ from: location }} replace />;
+    const pathParts = location.pathname.split("/");
+    const centerSlug = pathParts[1] || "";
+    return <Navigate to={`/${centerSlug ? `${centerSlug}/login` : "login"}`} replace />;
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
@@ -338,7 +340,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 الصفحات العامة
+// 🔓 Public route
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -354,7 +356,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ مكون لحفظ اسم السنتر من الرابط
+// ✅ Detect and store center slug
 function CenterDetector() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
@@ -366,7 +368,6 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
-  // ✅ عرض الصفحة الرئيسية بدون تغيير الرابط
   return <LandingPage />;
 }
 
@@ -390,10 +391,9 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ الصفحة الرئيسية */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* ✅ صفحات الدخول والتسجيل العامة */}
+        {/* ✅ Public login/register */}
         <Route
           path="/login"
           element={
@@ -411,7 +411,7 @@ function App() {
           }
         />
 
-        {/* ✅ صفحات الدخول والتسجيل الخاصة بالسنتر */}
+        {/* ✅ Center login/register */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -429,10 +429,10 @@ function App() {
           }
         />
 
-        {/* ✅ أي subdomain يفتح نفس الصفحة العادية + حفظ اسم السنتر */}
+        {/* ✅ Center landing */}
         <Route path="/:centerSlug" element={<CenterDetector />} />
 
-        {/* ✅ الداشبورد الخاصة بالسنتر */}
+        {/* ✅ Dashboards */}
         <Route
           path="/:centerSlug/dashboard/student"
           element={
@@ -466,7 +466,7 @@ function App() {
           }
         />
 
-        {/* ✅ الكورسات */}
+        {/* ✅ Courses */}
         <Route
           path="/:centerSlug/courses/:courseId"
           element={
@@ -484,7 +484,7 @@ function App() {
           }
         />
 
-        {/* ✅ الواجبات */}
+        {/* ✅ Assignments */}
         <Route
           path="/:centerSlug/assignments/:assignmentId"
           element={
@@ -494,7 +494,7 @@ function App() {
           }
         />
 
-        {/* ✅ الاشتراكات */}
+        {/* ✅ Subscriptions */}
         <Route
           path="/:centerSlug/subscriptions"
           element={
@@ -512,7 +512,7 @@ function App() {
           }
         />
 
-        {/* ✅ الإعدادات */}
+        {/* ✅ Settings */}
         <Route
           path="/:centerSlug/settings"
           element={
@@ -522,7 +522,7 @@ function App() {
           }
         />
 
-        {/* ❌ صفحة غير موجودة */}
+        {/* ❌ Not found */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </main>
