@@ -181,6 +181,7 @@
 //     </div>
 //   );
 // };
+
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Layers, ArrowRight, Loader2 } from "lucide-react";
@@ -196,7 +197,6 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ حفظ centerSlug في localStorage لو موجود
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug);
@@ -209,7 +209,6 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // ✅ استرجاع اسم السنتر من الرابط أو من localStorage
       const currentCenter =
         centerSlug || localStorage.getItem("center_subdomain");
 
@@ -219,7 +218,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ التأكد من وجود السنتر في قاعدة البيانات
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -232,7 +230,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ البحث عن المستخدم في جدول users
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -246,7 +243,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ التأكد من أن المستخدم ينتمي لنفس السنتر
       let validUser = false;
       const role = user.role?.toLowerCase();
 
@@ -284,7 +280,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ تسجيل الدخول باستخدام Supabase Auth (اختياري)
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -294,7 +289,6 @@ const Login: React.FC = () => {
         console.warn("⚠️ فشل تسجيل الدخول عبر Supabase Auth، سيتم المتابعة يدويًا.");
       }
 
-      // ✅ الانتقال إلى الداشبورد بناءً على الدور
       navigate(`/${currentCenter}/dashboard/${role || "student"}`);
     } catch (err) {
       console.error("Login error:", err);

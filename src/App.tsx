@@ -328,11 +328,11 @@ const PrivateRoute = ({
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to={`${location.pathname.split("/")[1] ? `/${location.pathname.split("/")[1]}/login` : "/login"}`} state={{ from: location }} replace />;
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
-    return <Navigate to={`/dashboard/${user.role.toLowerCase()}`} replace />;
+    return <Navigate to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`} replace />;
   }
 
   return children;
@@ -366,6 +366,7 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
+  // ✅ عرض الصفحة الرئيسية بدون تغيير الرابط
   return <LandingPage />;
 }
 
