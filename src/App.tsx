@@ -293,29 +293,28 @@
 //     </>
 //   );
 // }
-
-import { useEffect } from 'react';
-import { Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { useAuthStore } from './store/authStore';
-import { supabase } from './lib/supabase';
+import { useEffect } from "react";
+import { Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useAuthStore } from "./store/authStore";
+import { supabase } from "./lib/supabase";
 
 // ✅ الصفحات
-import Login from './pages/auth/Login';
-import Register from './pages/auth/Register';
-import StudentDashboard from './pages/dashboards/StudentDashboard';
-import TeacherDashboard from './pages/dashboards/TeacherDashboard';
-import ParentDashboard from './pages/dashboards/ParentDashboard';
-import AdminDashboard from './pages/dashboards/AdminDashboard';
-import NotFound from './pages/NotFound';
-import CourseView from './pages/courses/CourseView';
-import CourseCreate from './pages/courses/CourseCreate';
-import AssignmentView from './pages/assignments/AssignmentView';
-import SubscriptionPlans from './pages/subscriptions/SubscriptionPlans';
-import SubscriptionCheckout from './pages/subscriptions/SubscriptionCheckout';
-import Settings from './pages/settings/Settings';
-import LandingPage from './pages/LandingPage';
-import CenterPage from './pages/CenterPage';
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
+import StudentDashboard from "./pages/dashboards/StudentDashboard";
+import TeacherDashboard from "./pages/dashboards/TeacherDashboard";
+import ParentDashboard from "./pages/dashboards/ParentDashboard";
+import AdminDashboard from "./pages/dashboards/AdminDashboard";
+import NotFound from "./pages/NotFound";
+import CourseView from "./pages/courses/CourseView";
+import CourseCreate from "./pages/courses/CourseCreate";
+import AssignmentView from "./pages/assignments/AssignmentView";
+import SubscriptionPlans from "./pages/subscriptions/SubscriptionPlans";
+import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
+import Settings from "./pages/settings/Settings";
+import LandingPage from "./pages/LandingPage";
+import CenterPage from "./pages/CenterPage";
 
 // 🔐 حماية الصفحات الخاصة
 const PrivateRoute = ({
@@ -346,7 +345,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   if (isAuthenticated && user) {
     return (
       <Navigate
-        to={`/${user.center_subdomain || ''}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -361,9 +360,9 @@ function CenterDetector() {
 
   useEffect(() => {
     if (centerSlug) {
-      localStorage.setItem('center_subdomain', centerSlug.trim());
+      localStorage.setItem("center_subdomain", centerSlug.trim());
     } else {
-      localStorage.removeItem('center_subdomain');
+      localStorage.removeItem("center_subdomain");
     }
   }, [centerSlug]);
 
@@ -380,11 +379,11 @@ function App() {
   }, [initialize]);
 
   useEffect(() => {
-    document.title = 'EduTech - AI Learning Platform';
+    document.title = "EduTech - AI Learning Platform";
   }, [location]);
 
   useEffect(() => {
-    document.documentElement.dir = i18n.language === 'ar' ? 'rtl' : 'ltr';
+    document.documentElement.dir = i18n.language === "ar" ? "rtl" : "ltr";
   }, [i18n.language]);
 
   return (
@@ -393,7 +392,7 @@ function App() {
         {/* ✅ الصفحة الرئيسية */}
         <Route path="/" element={<LandingPage />} />
 
-        {/* ✅ صفحات الدخول والتسجيل */}
+        {/* ✅ صفحات الدخول والتسجيل العامة */}
         <Route
           path="/login"
           element={
@@ -411,6 +410,24 @@ function App() {
           }
         />
 
+        {/* ✅ صفحات الدخول والتسجيل الخاصة بالسنتر */}
+        <Route
+          path="/:centerSlug/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/:centerSlug/register"
+          element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          }
+        />
+
         {/* ✅ أي subdomain يفتح نفس الصفحة العادية + حفظ اسم السنتر */}
         <Route path="/:centerSlug" element={<CenterDetector />} />
 
@@ -418,7 +435,7 @@ function App() {
         <Route
           path="/:centerSlug/dashboard/student"
           element={
-            <PrivateRoute allowedRoles={['student']}>
+            <PrivateRoute allowedRoles={["student"]}>
               <StudentDashboard />
             </PrivateRoute>
           }
@@ -426,7 +443,7 @@ function App() {
         <Route
           path="/:centerSlug/dashboard/teacher"
           element={
-            <PrivateRoute allowedRoles={['teacher']}>
+            <PrivateRoute allowedRoles={["teacher"]}>
               <TeacherDashboard />
             </PrivateRoute>
           }
@@ -434,7 +451,7 @@ function App() {
         <Route
           path="/:centerSlug/dashboard/parent"
           element={
-            <PrivateRoute allowedRoles={['parent']}>
+            <PrivateRoute allowedRoles={["parent"]}>
               <ParentDashboard />
             </PrivateRoute>
           }
@@ -442,7 +459,7 @@ function App() {
         <Route
           path="/:centerSlug/dashboard/admin"
           element={
-            <PrivateRoute allowedRoles={['admin']}>
+            <PrivateRoute allowedRoles={["admin"]}>
               <AdminDashboard />
             </PrivateRoute>
           }
@@ -452,7 +469,7 @@ function App() {
         <Route
           path="/:centerSlug/courses/:courseId"
           element={
-            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
               <CourseView />
             </PrivateRoute>
           }
@@ -460,7 +477,7 @@ function App() {
         <Route
           path="/:centerSlug/courses/create"
           element={
-            <PrivateRoute allowedRoles={['teacher', 'admin']}>
+            <PrivateRoute allowedRoles={["teacher", "admin"]}>
               <CourseCreate />
             </PrivateRoute>
           }
@@ -470,7 +487,7 @@ function App() {
         <Route
           path="/:centerSlug/assignments/:assignmentId"
           element={
-            <PrivateRoute allowedRoles={['student', 'teacher', 'parent', 'admin']}>
+            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
               <AssignmentView />
             </PrivateRoute>
           }
@@ -480,7 +497,7 @@ function App() {
         <Route
           path="/:centerSlug/subscriptions"
           element={
-            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+            <PrivateRoute allowedRoles={["student", "parent", "admin"]}>
               <SubscriptionPlans />
             </PrivateRoute>
           }
@@ -488,7 +505,7 @@ function App() {
         <Route
           path="/:centerSlug/subscriptions/checkout"
           element={
-            <PrivateRoute allowedRoles={['student', 'parent', 'admin']}>
+            <PrivateRoute allowedRoles={["student", "parent", "admin"]}>
               <SubscriptionCheckout />
             </PrivateRoute>
           }
