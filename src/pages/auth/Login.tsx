@@ -238,7 +238,7 @@ const Login: React.FC = () => {
       });
 
       if (authError) {
-        console.warn("Supabase Auth failed, checking local tables...");
+        console.warn("⚠️ Supabase Auth failed, checking local tables...");
       }
 
       // ✅ Check if user exists in `students` table (belongs to this center)
@@ -278,8 +278,19 @@ const Login: React.FC = () => {
         student?.role?.toLowerCase() ||
         "student";
 
-      // ✅ Navigate to correct dashboard
-      navigate(`/${currentCenter}/dashboard/${role}`, { replace: true });
+      // ✅ Build safe redirect path
+      const safePath = `/${currentCenter}/dashboard/${role}`;
+
+      // ✅ Prevent invalid absolute URLs that trigger SecurityError
+      if (safePath.startsWith("http")) {
+        console.error("❌ Invalid redirect path:", safePath);
+        setErrorMsg("Invalid redirect path. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Navigate safely
+      navigate(safePath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("Unexpected error occurred. Please try again later.");
