@@ -217,10 +217,10 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ التحقق من وجود المركز
+      // ✅ التحقق من وجود المركز فعلاً
       const { data: center, error: centerError } = await supabase
         .from("centers")
-        .select("*")
+        .select("id, subdomain")
         .ilike("subdomain", currentCenter)
         .maybeSingle();
 
@@ -230,21 +230,23 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ التحقق من المستخدم
+      // ✅ البحث عن المستخدم داخل نفس المركز
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
+        .eq("center_id", center.id)
         .maybeSingle();
 
       if (userError) {
         console.error("User query error:", userError);
-        setErrorMsg("Error fetching user data.");
+        setErrorMsg("⚠️ Error fetching user data.");
         setLoading(false);
         return;
       }
 
-      if (!user || user.password !== password) {
+      // ✅ تحقق من وجود المستخدم وكلمة المرور
+      if (!user || user.password !== password.trim()) {
         setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
@@ -253,12 +255,11 @@ const Login: React.FC = () => {
       // ✅ تحديد الدور (role)
       const role = user.role?.toLowerCase() || "student";
 
-      // ✅ تحديد المسار الصحيح
+      // ✅ تحديد المسار الصحيح داخل نفس الدومين فقط
       const safePath = `/${currentCenter}/dashboard/${role}`;
-
       console.log("Redirecting to:", safePath);
 
-      // ✅ استخدم navigate داخل نفس الموقع فقط
+      // ✅ التنقل الداخلي بدون كسر الـ origin
       navigate(safePath, { replace: true });
 
     } catch (err) {
