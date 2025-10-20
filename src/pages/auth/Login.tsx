@@ -197,14 +197,12 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ حفظ centerSlug في localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
     }
   }, [centerSlug]);
 
-  // ✅ تسجيل الدخول
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -214,7 +212,7 @@ const Login: React.FC = () => {
       const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
 
       if (!currentCenter) {
-        setErrorMsg("⚠️ لم يتم تحديد المركز. يرجى استخدام رابط المركز الصحيح.");
+        setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
         setLoading(false);
         return;
       }
@@ -227,12 +225,12 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (centerError || !center) {
-        setErrorMsg("❌ هذا المركز غير موجود.");
+        setErrorMsg("❌ This center does not exist.");
         setLoading(false);
         return;
       }
 
-      // ✅ التحقق من المستخدم في جدول users (بدون center_id)
+      // ✅ التحقق من المستخدم
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -241,14 +239,13 @@ const Login: React.FC = () => {
 
       if (userError) {
         console.error("User query error:", userError);
-        setErrorMsg("حدث خطأ أثناء البحث عن المستخدم.");
+        setErrorMsg("Error fetching user data.");
         setLoading(false);
         return;
       }
 
-      // ✅ التحقق من صحة البيانات
       if (!user || user.password !== password) {
-        setErrorMsg("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
       }
@@ -256,18 +253,17 @@ const Login: React.FC = () => {
       // ✅ تحديد الدور (role)
       const role = user.role?.toLowerCase() || "student";
 
-      // ✅ توجيه المستخدم إلى لوحة التحكم المناسبة
+      // ✅ تحديد المسار الصحيح
       const safePath = `/${currentCenter}/dashboard/${role}`;
 
-      if (safePath.startsWith("http")) {
-        console.error("Invalid path detected:", safePath);
-        setErrorMsg("عنوان التوجيه غير صالح.");
-      } else {
-        navigate(safePath, { replace: true });
-      }
+      console.log("Redirecting to:", safePath);
+
+      // ✅ استخدم navigate داخل نفس الموقع فقط
+      navigate(safePath, { replace: true });
+
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("حدث خطأ غير متوقع. حاول مرة أخرى لاحقًا.");
+      setErrorMsg("Unexpected error occurred. Please try again later.");
     }
 
     setLoading(false);
