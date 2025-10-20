@@ -254,12 +254,11 @@ const Login: React.FC = () => {
         console.error("Student query error:", studentError);
       }
 
-      // ✅ Check if user exists in this center
+      // ✅ Check if user exists (no center_id column)
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
-        .eq("center_id", center.id)
         .maybeSingle();
 
       if (userError) {
@@ -279,10 +278,10 @@ const Login: React.FC = () => {
         student?.role?.toLowerCase() ||
         "student";
 
-      // ✅ Safe redirect path (fixed SecurityError)
-      const safePath = `/${currentCenter ? `${currentCenter}/` : ""}dashboard/${role}`;
+      // ✅ Safe redirect path
+      const safePath = `/${currentCenter}/dashboard/${role}`;
 
-      if (safePath.includes("http") || safePath.includes("://")) {
+      if (safePath.startsWith("http")) {
         console.error("Invalid path detected:", safePath);
         setErrorMsg("Invalid redirect URL.");
       } else {
