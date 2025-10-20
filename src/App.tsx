@@ -294,14 +294,12 @@
 //   );
 // }
 
-
 import { useEffect } from "react";
 import { Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
 import { supabase } from "./lib/supabase";
 
-// ✅ Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -398,13 +396,11 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ Redirect /login → /gammal/login */}
+        {/* ✅ Default redirects */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
-
-        {/* ✅ Redirect /register → /gammal/register */}
         <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Public login/register for each center */}
+        {/* ✅ Public routes */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -515,10 +511,8 @@ function App() {
           }
         />
 
-        {/* ✅ Default route */}
+        {/* ✅ Landing + 404 */}
         <Route path="/" element={<LandingPage />} />
-
-        {/* ❌ Not found */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </main>
