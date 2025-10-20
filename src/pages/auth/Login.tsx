@@ -197,14 +197,14 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ Save centerSlug in localStorage
+  // ✅ حفظ centerSlug في localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
     }
   }, [centerSlug]);
 
-  // ✅ Handle login
+  // ✅ تسجيل الدخول
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -214,12 +214,12 @@ const Login: React.FC = () => {
       const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
 
       if (!currentCenter) {
-        setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
+        setErrorMsg("⚠️ لم يتم تحديد المركز. يرجى استخدام رابط المركز الصحيح.");
         setLoading(false);
         return;
       }
 
-      // ✅ Verify if center exists
+      // ✅ التحقق من وجود المركز
       const { data: center, error: centerError } = await supabase
         .from("centers")
         .select("*")
@@ -227,34 +227,12 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (centerError || !center) {
-        setErrorMsg("❌ This center does not exist.");
+        setErrorMsg("❌ هذا المركز غير موجود.");
         setLoading(false);
         return;
       }
 
-      // ✅ Try to log in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
-      });
-
-      if (authError) {
-        console.warn("Supabase Auth failed, checking local tables...");
-      }
-
-      // ✅ Check if student exists in this center
-      const { data: student, error: studentError } = await supabase
-        .from("students")
-        .select("*")
-        .eq("email", email.trim())
-        .eq("center_id", center.id)
-        .maybeSingle();
-
-      if (studentError) {
-        console.error("Student query error:", studentError);
-      }
-
-      // ✅ Check if user exists (no center_id column)
+      // ✅ التحقق من المستخدم في جدول users (بدون center_id)
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -263,34 +241,33 @@ const Login: React.FC = () => {
 
       if (userError) {
         console.error("User query error:", userError);
-      }
-
-      // ✅ Final validation
-      if (!authData?.user && !student && !user) {
-        setErrorMsg("❌ Incorrect email or password.");
+        setErrorMsg("حدث خطأ أثناء البحث عن المستخدم.");
         setLoading(false);
         return;
       }
 
-      // ✅ Detect user role
-      const role =
-        user?.role?.toLowerCase() ||
-        student?.role?.toLowerCase() ||
-        "student";
+      // ✅ التحقق من صحة البيانات
+      if (!user || user.password !== password) {
+        setErrorMsg("❌ البريد الإلكتروني أو كلمة المرور غير صحيحة.");
+        setLoading(false);
+        return;
+      }
 
-      // ✅ Safe redirect path
+      // ✅ تحديد الدور (role)
+      const role = user.role?.toLowerCase() || "student";
+
+      // ✅ توجيه المستخدم إلى لوحة التحكم المناسبة
       const safePath = `/${currentCenter}/dashboard/${role}`;
 
       if (safePath.startsWith("http")) {
         console.error("Invalid path detected:", safePath);
-        setErrorMsg("Invalid redirect URL.");
+        setErrorMsg("عنوان التوجيه غير صالح.");
       } else {
         navigate(safePath, { replace: true });
       }
-
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("Unexpected error occurred. Please try again later.");
+      setErrorMsg("حدث خطأ غير متوقع. حاول مرة أخرى لاحقًا.");
     }
 
     setLoading(false);
