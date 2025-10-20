@@ -230,12 +230,11 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ البحث عن المستخدم داخل نفس المركز
+      // ✅ البحث عن المستخدم بناءً على الإيميل فقط (بدون center_id)
       const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
-        .eq("center_id", center.id)
         .maybeSingle();
 
       if (userError) {
@@ -255,11 +254,11 @@ const Login: React.FC = () => {
       // ✅ تحديد الدور (role)
       const role = user.role?.toLowerCase() || "student";
 
-      // ✅ تحديد المسار الصحيح داخل نفس الدومين فقط
+      // ✅ تحديد المسار الصحيح داخل نفس المركز
       const safePath = `/${currentCenter}/dashboard/${role}`;
       console.log("Redirecting to:", safePath);
 
-      // ✅ التنقل الداخلي بدون كسر الـ origin
+      // ✅ تنقل داخلي آمن داخل نفس الـ origin
       navigate(safePath, { replace: true });
 
     } catch (err) {
