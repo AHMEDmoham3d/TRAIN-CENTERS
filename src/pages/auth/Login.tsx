@@ -279,10 +279,10 @@ const Login: React.FC = () => {
         student?.role?.toLowerCase() ||
         "student";
 
-      // ✅ Safe redirect path
-      const safePath = `/${currentCenter}/dashboard/${role}`;
+      // ✅ Safe redirect path (fixed SecurityError)
+      const safePath = `/${currentCenter ? `${currentCenter}/` : ""}dashboard/${role}`;
 
-      if (safePath.startsWith("http")) {
+      if (safePath.includes("http") || safePath.includes("://")) {
         console.error("Invalid path detected:", safePath);
         setErrorMsg("Invalid redirect URL.");
       } else {
