@@ -293,13 +293,19 @@
 //     </>
 //   );
 // }
-
 import { useEffect } from "react";
-import { Routes, Route, useLocation, Navigate, useParams } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  useLocation,
+  Navigate,
+  useParams,
+} from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
 import { supabase } from "./lib/supabase";
 
+// ✅ Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -316,7 +322,7 @@ import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 import CenterPage from "./pages/CenterPage";
 
-// 🔐 Protected route
+// 🔐 Protected Route
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -330,7 +336,12 @@ const PrivateRoute = ({
   if (!isAuthenticated) {
     const pathParts = location.pathname.split("/");
     const centerSlug = pathParts[1] || "";
-    return <Navigate to={`/${centerSlug ? `${centerSlug}/login` : "login"}`} replace />;
+    return (
+      <Navigate
+        to={`/${centerSlug ? `${centerSlug}/login` : "login"}`}
+        replace
+      />
+    );
   }
 
   if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
@@ -345,7 +356,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 Public route
+// 🔓 Public Route
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -361,7 +372,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ Detect and store center slug
+// ✅ Detect Center Slug
 function CenterDetector() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
@@ -373,7 +384,7 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
-  return <LandingPage />;
+  return <CenterPage />;
 }
 
 function App() {
@@ -381,14 +392,17 @@ function App() {
   const { initialize } = useAuthStore();
   const location = useLocation();
 
+  // ✅ Initialize auth store once
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // ✅ Update title
   useEffect(() => {
     document.title = "EduTech - AI Learning Platform";
   }, [location]);
 
+  // ✅ Set language direction
   useEffect(() => {
     document.documentElement.dir = i18n.language === "ar" ? "rtl" : "ltr";
   }, [i18n.language]);
@@ -396,9 +410,12 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ Default redirects */}
+        {/* ✅ Redirect root login/register */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
-        <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
+        <Route
+          path="/register"
+          element={<Navigate to="/gammal/register" replace />}
+        />
 
         {/* ✅ Public routes */}
         <Route
@@ -406,6 +423,14 @@ function App() {
           element={
             <PublicRoute>
               <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/:centerSlug/register"
+          element={
+            <PublicRoute>
+              <Register />
             </PublicRoute>
           }
         />
@@ -503,7 +528,7 @@ function App() {
           }
         />
 
-        {/* ✅ Landing + 404 */}
+        {/* ✅ Default landing + 404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
