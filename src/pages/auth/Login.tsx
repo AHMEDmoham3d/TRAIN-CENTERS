@@ -236,14 +236,18 @@ const Login: React.FC = () => {
       }
 
       // 🧩 Step 2: Fetch user inside that center
+      const SUPABASE_URL = "https://biqzcfbcsflriybyvtur.supabase.co";
+      const SUPABASE_KEY =
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXpjZmJjc2Zscml5Ynl2dHVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3NTczMDQsImV4cCI6MjA3NTMzMzMwNH0.J9kVaVrOpv83CQs6Q9N7TJQ34HGBbPR_1Vf_XaycMT0";
+
       const response = await fetch(
-        `https://biqzcfbcsflriybyvtur.supabase.co/rest/v1/users?select=*&email=eq.${encodeURIComponent(
+        `${SUPABASE_URL}/rest/v1/users?select=*&email=eq.${encodeURIComponent(
           email.trim()
         )}&password=eq.${encodeURIComponent(password.trim())}&center_id=eq.${centerId}`,
         {
           headers: {
-            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
             Accept: "application/json",
           },
         }
