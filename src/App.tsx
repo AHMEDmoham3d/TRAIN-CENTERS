@@ -303,9 +303,6 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
-import { supabase } from "./lib/supabase";
-
-// ✅ Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -322,7 +319,7 @@ import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 import CenterPage from "./pages/CenterPage";
 
-// 🔐 Protected Route
+// 🔐 Protected route (only for logged-in users)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -333,21 +330,16 @@ const PrivateRoute = ({
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || !user) {
     const pathParts = location.pathname.split("/");
     const centerSlug = pathParts[1] || "";
-    return (
-      <Navigate
-        to={`/${centerSlug ? `${centerSlug}/login` : "login"}`}
-        replace
-      />
-    );
+    return <Navigate to={`/${centerSlug}/login`} replace />;
   }
 
-  if (allowedRoles.length > 0 && user && !allowedRoles.includes(user.role)) {
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
-        to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -356,14 +348,14 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 Public Route
+// 🔓 Public route (for guests)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
   if (isAuthenticated && user) {
     return (
       <Navigate
-        to={`/${user.center_subdomain || ""}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -372,7 +364,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ Detect Center Slug
+// ✅ Detect and set center slug
 function CenterDetector() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
@@ -384,6 +376,7 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
+  // ✅ show center landing page (like /gammal/)
   return <CenterPage />;
 }
 
@@ -392,17 +385,15 @@ function App() {
   const { initialize } = useAuthStore();
   const location = useLocation();
 
-  // ✅ Initialize auth store once
+  // ✅ Initialize authentication
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // ✅ Update title
   useEffect(() => {
     document.title = "EduTech - AI Learning Platform";
   }, [location]);
 
-  // ✅ Set language direction
   useEffect(() => {
     document.documentElement.dir = i18n.language === "ar" ? "rtl" : "ltr";
   }, [i18n.language]);
@@ -410,14 +401,14 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ Redirect root login/register */}
+        {/* ✅ Redirect default login/register to gammal */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
-        <Route
-          path="/register"
-          element={<Navigate to="/gammal/register" replace />}
-        />
+        <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Public routes */}
+        {/* ✅ Center public landing (like /gammal/) */}
+        <Route path="/:centerSlug" element={<CenterDetector />} />
+
+        {/* ✅ Authentication routes */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -434,9 +425,6 @@ function App() {
             </PublicRoute>
           }
         />
-
-        {/* ✅ Center landing */}
-        <Route path="/:centerSlug" element={<CenterDetector />} />
 
         {/* ✅ Dashboards */}
         <Route
@@ -528,7 +516,7 @@ function App() {
           }
         />
 
-        {/* ✅ Default landing + 404 */}
+        {/* ✅ Landing (main site) + 404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
