@@ -303,6 +303,8 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
+
+// ✅ الصفحات
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -319,7 +321,7 @@ import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 import CenterPage from "./pages/CenterPage";
 
-// 🔐 Protected route (only for logged-in users)
+// 🔐 المسار المحمي (للأعضاء فقط)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -348,7 +350,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 Public route (for guests)
+// 🔓 المسار العام (لغير المسجلين)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -364,9 +366,10 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ Detect and set center slug
+// ✅ التحقق من السنتر وتوجيهه لصفحة تسجيل الدخول مباشرة
 function CenterDetector() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
+  const navigate = useLocation();
 
   useEffect(() => {
     if (centerSlug) {
@@ -376,8 +379,14 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
-  // ✅ show center landing page (like /gammal/)
-  return <CenterPage />;
+  // ✅ أي مستخدم يدخل على /gammal يتم تحويله مباشرة إلى /gammal/login
+  useEffect(() => {
+    if (centerSlug) {
+      window.location.replace(`/${centerSlug}/login`);
+    }
+  }, [centerSlug]);
+
+  return null;
 }
 
 function App() {
@@ -385,15 +394,17 @@ function App() {
   const { initialize } = useAuthStore();
   const location = useLocation();
 
-  // ✅ Initialize authentication
+  // ✅ تهيئة نظام المصادقة
   useEffect(() => {
     initialize();
   }, [initialize]);
 
+  // ✅ تغيير العنوان عند التنقل
   useEffect(() => {
     document.title = "EduTech - AI Learning Platform";
   }, [location]);
 
+  // ✅ تغيير اتجاه اللغة
   useEffect(() => {
     document.documentElement.dir = i18n.language === "ar" ? "rtl" : "ltr";
   }, [i18n.language]);
@@ -401,14 +412,17 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ Redirect default login/register to gammal */}
+        {/* ✅ التوجيه الافتراضي */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
-        <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
+        <Route
+          path="/register"
+          element={<Navigate to="/gammal/register" replace />}
+        />
 
-        {/* ✅ Center public landing (like /gammal/) */}
+        {/* ✅ الدخول إلى سنتر معين */}
         <Route path="/:centerSlug" element={<CenterDetector />} />
 
-        {/* ✅ Authentication routes */}
+        {/* ✅ صفحات المصادقة */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -426,7 +440,7 @@ function App() {
           }
         />
 
-        {/* ✅ Dashboards */}
+        {/* ✅ لوحات التحكم */}
         <Route
           path="/:centerSlug/dashboard/student"
           element={
@@ -460,11 +474,13 @@ function App() {
           }
         />
 
-        {/* ✅ Courses */}
+        {/* ✅ الدورات */}
         <Route
           path="/:centerSlug/courses/:courseId"
           element={
-            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
+            <PrivateRoute
+              allowedRoles={["student", "teacher", "parent", "admin"]}
+            >
               <CourseView />
             </PrivateRoute>
           }
@@ -478,17 +494,19 @@ function App() {
           }
         />
 
-        {/* ✅ Assignments */}
+        {/* ✅ الواجبات */}
         <Route
           path="/:centerSlug/assignments/:assignmentId"
           element={
-            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
+            <PrivateRoute
+              allowedRoles={["student", "teacher", "parent", "admin"]}
+            >
               <AssignmentView />
             </PrivateRoute>
           }
         />
 
-        {/* ✅ Subscriptions */}
+        {/* ✅ الاشتراكات */}
         <Route
           path="/:centerSlug/subscriptions"
           element={
@@ -506,7 +524,7 @@ function App() {
           }
         />
 
-        {/* ✅ Settings */}
+        {/* ✅ الإعدادات */}
         <Route
           path="/:centerSlug/settings"
           element={
@@ -516,7 +534,7 @@ function App() {
           }
         />
 
-        {/* ✅ Landing (main site) + 404 */}
+        {/* ✅ الصفحة الرئيسية و404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
