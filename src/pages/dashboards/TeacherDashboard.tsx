@@ -63,27 +63,44 @@ const TeacherDashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       if (!user) return;
 
+      // Get center subdomain from user or localStorage
+      const centerSubdomain = user.center_subdomain || localStorage.getItem("center_subdomain");
+      if (!centerSubdomain) return;
+
       setLoading(true);
       try {
-        // Fetch materials count (courses)
+        // First, get center_id from subdomain
+        const { data: center, error: centerError } = await supabase
+          .from('centers')
+          .select('id')
+          .ilike('subdomain', centerSubdomain)
+          .single();
+
+        if (centerError || !center) {
+          console.error('Center not found:', centerError);
+          return;
+        }
+
+        // Fetch materials count (courses) filtered by center
         const { count: materialsCount } = await supabase
           .from('materials')
           .select('*', { count: 'exact', head: true })
           .eq('teacher_id', user.id);
 
-        // Fetch students count (students taught by this teacher)
+        // Fetch students count (students taught by this teacher) filtered by center
         const { count: studentsCount } = await supabase
           .from('students')
           .select('*', { count: 'exact', head: true })
-          .eq('teacher_id', user.id);
+          .eq('teacher_id', user.id)
+          .eq('center_id', center.id);
 
-        // Fetch exams count (pending assignments)
+        // Fetch exams count (pending assignments) filtered by center
         const { count: examsCount } = await supabase
           .from('exams')
           .select('*', { count: 'exact', head: true })
           .eq('teacher_id', user.id);
 
-        // Fetch videos count (upcoming sessions)
+        // Fetch videos count (upcoming sessions) filtered by center
         const { count: videosCount } = await supabase
           .from('videos')
           .select('*', { count: 'exact', head: true })

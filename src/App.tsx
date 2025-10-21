@@ -409,14 +409,6 @@ function App() {
             </PublicRoute>
           }
         />
-        <Route
-          path="/:centerSlug/register"
-          element={
-            <PublicRoute>
-              <Register />
-            </PublicRoute>
-          }
-        />
 
         {/* ✅ Center landing */}
         <Route path="/:centerSlug" element={<CenterDetector />} />

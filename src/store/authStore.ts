@@ -17,7 +17,7 @@ interface AuthState {
   token: string | null;
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string, centerSlug: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string, role: string, centerSlug: string) => Promise<void>;
   logout: () => Promise<void>;
   initialize: () => void;
@@ -68,50 +68,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  login: async (email, password, centerSlug) => {
-    set({ loading: true, error: null });
-
-    try {
-      // ✅ التحقق من المستخدم في جدول users المرتبط بالسنتر الحالي
-      const { data: userRecord, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('email', email)
-        .ilike('center_subdomain', centerSlug)
-        .maybeSingle();
-
-      if (userError || !userRecord) {
-        throw new Error('No user found for this center.');
-      }
-
-      // تسجيل الدخول
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) throw error;
-
-      set({
-        user: {
-          id: data.user?.id || '',
-          name: userRecord.name || data.user?.email || '',
-          email: data.user?.email || '',
-          role: userRecord.role,
-          center_subdomain: userRecord.center_subdomain,
-        },
-        token: data.session?.access_token || null,
-        isAuthenticated: true,
-        loading: false,
-      });
-    } catch (err) {
-      console.error('Login error:', err);
-      set({
-        loading: false,
-        error: err instanceof Error ? err.message : 'Login failed',
-        isAuthenticated: false,
-      });
-    }
+  login: async (email: string, password: string) => {
+    // Login is now handled manually in Login.tsx, so this can be a no-op or removed
+    set({ loading: false, error: null });
   },
 
   register: async (name, email, password, role, centerSlug) => {

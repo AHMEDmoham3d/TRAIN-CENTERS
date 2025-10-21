@@ -58,23 +58,39 @@ const StudentDashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       if (!user) return;
 
+      // Get center subdomain from user or localStorage
+      const centerSubdomain = user.center_subdomain || localStorage.getItem("center_subdomain");
+      if (!centerSubdomain) return;
+
       setLoading(true);
       try {
-        // Fetch student's subscriptions (active courses)
+        // First, get center_id from subdomain
+        const { data: center, error: centerError } = await supabase
+          .from('centers')
+          .select('id')
+          .ilike('subdomain', centerSubdomain)
+          .single();
+
+        if (centerError || !center) {
+          console.error('Center not found:', centerError);
+          return;
+        }
+
+        // Fetch student's subscriptions (active courses) filtered by center
         const { data: subscriptions } = await supabase
           .from('subscriptions')
           .select('*, materials(*)')
           .eq('student_id', user.id)
           .eq('status', 'active');
 
-        // Fetch exam results for pending assignments
+        // Fetch exam results for pending assignments filtered by center
         const { data: examResults } = await supabase
           .from('exam_results')
           .select('*, exams(*)')
           .eq('student_id', user.id)
           .is('score', null); // Pending exams
 
-        // Fetch payments for achievements (completed payments)
+        // Fetch payments for achievements (completed payments) filtered by center
         const { data: payments } = await supabase
           .from('payments')
           .select('*')

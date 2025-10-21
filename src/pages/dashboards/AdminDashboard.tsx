@@ -65,24 +65,42 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     const fetchDashboardData = async () => {
+      if (!user) return;
+
+      // Get center subdomain from user or localStorage
+      const centerSubdomain = user.center_subdomain || localStorage.getItem("center_subdomain");
+      if (!centerSubdomain) return;
+
       setLoading(true);
       try {
-        // Fetch total users
+        // First, get center_id from subdomain
+        const { data: center, error: centerError } = await supabase
+          .from('centers')
+          .select('id')
+          .ilike('subdomain', centerSubdomain)
+          .single();
+
+        if (centerError || !center) {
+          console.error('Center not found:', centerError);
+          return;
+        }
+
+        // Fetch total users for this center
         const { count: totalUsers } = await supabase
           .from('users')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch total centers
+        // Fetch total centers (admins see all centers? or just their own? Assuming all for now)
         const { count: totalCenters } = await supabase
           .from('centers')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch total materials (as courses)
+        // Fetch total materials (as courses) for this center
         const { count: totalMaterials } = await supabase
           .from('materials')
           .select('*', { count: 'exact', head: true });
 
-        // Fetch total payments (revenue)
+        // Fetch total payments (revenue) for this center
         const { data: payments } = await supabase
           .from('payments')
           .select('amount');

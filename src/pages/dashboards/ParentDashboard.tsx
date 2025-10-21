@@ -75,13 +75,30 @@ const ParentDashboard: React.FC = () => {
     const fetchDashboardData = async () => {
       if (!user) return;
 
+      // Get center subdomain from user or localStorage
+      const centerSubdomain = user.center_subdomain || localStorage.getItem("center_subdomain");
+      if (!centerSubdomain) return;
+
       setLoading(true);
       try {
-        // Fetch parent's children (students)
+        // First, get center_id from subdomain
+        const { data: center, error: centerError } = await supabase
+          .from('centers')
+          .select('id')
+          .ilike('subdomain', centerSubdomain)
+          .single();
+
+        if (centerError || !center) {
+          console.error('Center not found:', centerError);
+          return;
+        }
+
+        // Fetch parent's children (students) filtered by center
         const { data: studentsData } = await supabase
           .from('students')
           .select('*')
-          .eq('parent_id', user.id);
+          .eq('parent_id', user.id)
+          .eq('center_id', center.id);
 
         if (studentsData) {
           setChildren(studentsData.map(s => ({
@@ -94,7 +111,7 @@ const ParentDashboard: React.FC = () => {
           })));
         }
 
-        // Fetch payments for this parent
+        // Fetch payments for this parent filtered by center
         const { data: paymentsData } = await supabase
           .from('payments')
           .select('*')

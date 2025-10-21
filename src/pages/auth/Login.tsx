@@ -230,29 +230,85 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ البحث عن المستخدم بناءً على الإيميل فقط (بدون center_id)
-      const { data: user, error: userError } = await supabase
-        .from("users")
+      // ✅ البحث في جداول الأدوار المرتبطة بالسنتر
+      let userData: any = null;
+      let role: string = "";
+
+      // Check students table
+      const { data: student, error: studentError } = await supabase
+        .from("students")
         .select("*")
+        .eq("center_id", center.id)
         .eq("email", email.trim())
+        .eq("password", password.trim())
         .maybeSingle();
 
-      if (userError) {
-        console.error("User query error:", userError);
-        setErrorMsg("⚠️ Error fetching user data.");
+      if (!studentError && student) {
+        userData = student;
+        role = "student";
+      }
+
+      // If not found, check teachers
+      if (!userData) {
+        const { data: teacher, error: teacherError } = await supabase
+          .from("teachers")
+          .select("*")
+          .eq("center_id", center.id)
+          .eq("email", email.trim())
+          .eq("password", password.trim())
+          .maybeSingle();
+
+        if (!teacherError && teacher) {
+          userData = teacher;
+          role = "teacher";
+        }
+      }
+
+      // If not found, check admins
+      if (!userData) {
+        const { data: admin, error: adminError } = await supabase
+          .from("admins")
+          .select("*")
+          .eq("center_id", center.id)
+          .eq("email", email.trim())
+          .eq("password", password.trim())
+          .maybeSingle();
+
+        if (!adminError && admin) {
+          userData = admin;
+          role = "admin";
+        }
+      }
+
+      // If not found, check parents (via students)
+      if (!userData) {
+        const { data: parent, error: parentError } = await supabase
+          .from("parents")
+          .select("*, students!inner(center_id)")
+          .eq("email", email.trim())
+          .eq("students.center_id", center.id)
+          .maybeSingle();
+
+        if (!parentError && parent) {
+          userData = parent;
+          role = "parent";
+        }
+      }
+
+      if (!userData) {
+        setErrorMsg("❌ Incorrect email or password for this center.");
         setLoading(false);
         return;
       }
 
-      // ✅ تحقق من وجود المستخدم وكلمة المرور
-      if (!user || user.password !== password.trim()) {
-        setErrorMsg("❌ Incorrect email or password.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ تحديد الدور (role)
-      const role = user.role?.toLowerCase() || "student";
+      // ✅ حفظ بيانات المستخدم في localStorage أو state (يمكن تحسينه لاحقاً)
+      localStorage.setItem("user", JSON.stringify({
+        id: userData.id,
+        name: userData.full_name || userData.name,
+        email: userData.email,
+        role,
+        center_subdomain: currentCenter,
+      }));
 
       // ✅ تحديد المسار الصحيح داخل نفس المركز
       const safePath = `/${currentCenter}/dashboard/${role}`;
@@ -341,16 +397,7 @@ const Login: React.FC = () => {
             </div>
           </form>
 
-          <div className="mt-6 text-center">
-            <div className="text-sm text-gray-600 mb-3">Don’t have an account?</div>
-            <Link
-              to={centerSlug ? `/${centerSlug}/register` : "/register"}
-              className="w-full flex justify-center items-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
-              Sign up
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Link>
-          </div>
+
         </div>
       </div>
     </div>
