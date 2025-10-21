@@ -196,7 +196,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // 🧩 Store center subdomain in localStorage
+  // 🧩 Save center slug in localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
@@ -209,7 +209,28 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // 🧩 Step 1: Get center_id from subdomain
+      // 🧩 Step 1: Sign in using Supabase Auth
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
+
+      if (signInError) {
+        console.error("Auth Error:", signInError.message);
+        setErrorMsg("❌ Incorrect email or password.");
+        setLoading(false);
+        return;
+      }
+
+      const user = signInData.user;
+      if (!user) {
+        setErrorMsg("⚠️ Authentication failed.");
+        setLoading(false);
+        return;
+      }
+
+      // 🧩 Step 2: Get current center id from subdomain
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
       let centerId: string | null = null;
 
@@ -224,67 +245,49 @@ const Login: React.FC = () => {
         if (centerData) centerId = centerData.id;
       }
 
-      console.log("🔍 Email:", email);
-      console.log("🔍 Password:", password);
-      console.log("🔍 Center ID:", centerId);
-      console.log("🔍 Center Slug:", centerSlug);
-
       if (!centerId) {
         setErrorMsg("❌ Center not found.");
         setLoading(false);
         return;
       }
 
-      // 🧩 Step 2: Fetch user inside that center
-      const SUPABASE_URL = "https://biqzcfbcsflriybyvtur.supabase.co";
-      const SUPABASE_KEY =
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXpjZmJjc2Zscml5Ynl2dHVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3NTczMDQsImV4cCI6MjA3NTMzMzMwNH0.J9kVaVrOpv83CQs6Q9N7TJQ34HGBbPR_1Vf_XaycMT0";
+      // 🧩 Step 3: Get user info from `users` table (extended info)
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("*")
+        .eq("id", user.id)
+        .maybeSingle();
 
-      const response = await fetch(
-        `${SUPABASE_URL}/rest/v1/users?select=*&email=eq.${encodeURIComponent(
-          email.trim()
-        )}&password=eq.${encodeURIComponent(password.trim())}&center_id=eq.${centerId}`,
-        {
-          headers: {
-            apikey: SUPABASE_KEY,
-            Authorization: `Bearer ${SUPABASE_KEY}`,
-            Accept: "application/json",
-          },
-        }
-      );
-
-      if (!response.ok) {
-        console.error("User query failed:", response.status);
-        throw new Error(`Supabase returned ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!data || data.length === 0) {
-        setErrorMsg("❌ Incorrect email or password.");
+      if (userError) {
+        console.error("User fetch error:", userError.message);
+        setErrorMsg("⚠️ Error fetching user data.");
         setLoading(false);
         return;
       }
 
-      const user = data[0];
+      if (!userData) {
+        setErrorMsg("❌ User profile not found.");
+        setLoading(false);
+        return;
+      }
 
-      // 🧩 Step 3: Save user info in localStorage
+      // 🧩 Step 4: Save user info to localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
           id: user.id,
-          name: user.full_name,
+          name: userData.full_name,
           email: user.email,
-          role: user.role,
-          phone: user.phone,
+          role: userData.role,
+          phone: userData.phone,
           center_subdomain: currentSlug || "gammal",
         })
       );
 
-      // 🧩 Step 4: Redirect user by role
+      // 🧩 Step 5: Redirect based on role
       let redirectPath = `/${currentSlug || "gammal"}/dashboard`;
 
-      switch (user.role) {
+      switch (userData.role) {
         case "student":
           redirectPath += "/student";
           break;
@@ -303,7 +306,7 @@ const Login: React.FC = () => {
       navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("⚠️ An unexpected error occurred. Please try again.");
+      setErrorMsg("⚠️ Unexpected error. Please try again.");
     }
 
     setLoading(false);
@@ -331,7 +334,10 @@ const Login: React.FC = () => {
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Email
               </label>
               <input
@@ -346,7 +352,10 @@ const Login: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Password
               </label>
               <input
@@ -371,7 +380,11 @@ const Login: React.FC = () => {
               disabled={loading}
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                "Sign in"
+              )}
             </button>
           </form>
         </div>
