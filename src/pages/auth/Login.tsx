@@ -197,71 +197,75 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [centerId, setCenterId] = useState<string | null>(null);
 
-  // ✅ Get center info from localStorage or Supabase
   useEffect(() => {
-    const savedSlug = centerSlug || localStorage.getItem("center_subdomain");
-    if (savedSlug) {
-      localStorage.setItem("center_subdomain", savedSlug.trim());
-      fetchCenterId(savedSlug.trim());
+    if (centerSlug) {
+      // حفظ اسم السنتر الحالي
+      localStorage.setItem("center_subdomain", centerSlug.trim());
+    } else {
+      // ✅ لو مفيش سنتر في اللينك احذف أي سنتر محفوظ
+      localStorage.removeItem("center_subdomain");
     }
   }, [centerSlug]);
 
-  // ✅ Get center_id from "centers" table based on slug
-  const fetchCenterId = async (slug: string) => {
-    try {
-      const { data, error } = await supabase
-        .from("centers")
-        .select("id")
-        .eq("subdomain", slug)
-        .maybeSingle();
-
-      if (!error && data) {
-        setCenterId(data.id);
-      } else {
-        console.error("Center not found for slug:", slug);
-      }
-    } catch (err) {
-      console.error("Error fetching center ID:", err);
-    }
-  };
-
-  // ✅ Handle login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
+    const currentCenter =
+      centerSlug || localStorage.getItem("center_subdomain");
+
+    // ✅ منع تسجيل الدخول بدون سنتر
+    if (!currentCenter) {
+      setErrorMsg("⚠️ Please access the login page through your center link (e.g., /gammal/login)");
+      setLoading(false);
+      return;
+    }
+
     try {
-      if (!centerId) {
-        setErrorMsg("❌ Center not found. Please refresh and try again.");
+      // ✅ تحقق من وجود السنتر أولاً
+      const { data: center, error: centerError } = await supabase
+        .from("centers")
+        .select("id, subdomain")
+        .ilike("subdomain", currentCenter)
+        .maybeSingle();
+
+      if (centerError || !center) {
+        setErrorMsg("❌ This center does not exist.");
         setLoading(false);
         return;
       }
 
-      // ✅ Check if email exists in this center
-      const { data: user, error } = await supabase
+      // ✅ ابحث عن المستخدم داخل نفس السنتر
+      const { data: user, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
-        .eq("center_id", centerId)
+        .eq("center_id", center.id)
         .maybeSingle();
 
-      if (error || !user) {
+      if (userError) {
+        console.error("User query error:", userError);
+        setErrorMsg("⚠️ Error fetching user data.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ التحقق من المستخدم وكلمة المرور
+      if (!user) {
         setErrorMsg("❌ Email not found.");
         setLoading(false);
         return;
       }
 
-      // ✅ Check password
       if (user.password.trim() !== password.trim()) {
         setErrorMsg("❌ Incorrect password.");
         setLoading(false);
         return;
       }
 
-      // ✅ Save user data
+      // ✅ حفظ بيانات المستخدم في localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -270,13 +274,12 @@ const Login: React.FC = () => {
           email: user.email,
           role: user.role,
           phone: user.phone,
-          center_id: user.center_id,
-          center_subdomain: centerSlug || localStorage.getItem("center_subdomain") || "gammal",
+          center_subdomain: center.subdomain,
         })
       );
 
-      // ✅ Redirect based on role
-      const redirectPath = `/${centerSlug || "gammal"}/dashboard/${user.role}`;
+      // ✅ تحويل حسب الدور
+      const redirectPath = `/${center.subdomain}/dashboard/${user.role}`;
       console.log("Redirecting to:", redirectPath);
       navigate(redirectPath, { replace: true });
     } catch (err) {
