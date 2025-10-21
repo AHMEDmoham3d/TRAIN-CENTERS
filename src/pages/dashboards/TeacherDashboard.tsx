@@ -92,7 +92,7 @@ const TeacherDashboard: React.FC = () => {
           .from('students')
           .select('*', { count: 'exact', head: true })
           .eq('teacher_id', user.id)
-          .eq('center_id', center.id);
+          .eq('center_subdomain', centerSubdomain);
 
         // Fetch exams count (pending assignments) filtered by center
         const { count: examsCount } = await supabase

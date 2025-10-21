@@ -238,7 +238,7 @@ const Login: React.FC = () => {
       const { data: student, error: studentError } = await supabase
         .from("students")
         .select("*")
-        .eq("center_id", center.id)
+        .eq("center_subdomain", currentCenter)
         .eq("email", email.trim())
         .eq("password", password.trim())
         .maybeSingle();
@@ -253,7 +253,7 @@ const Login: React.FC = () => {
         const { data: teacher, error: teacherError } = await supabase
           .from("teachers")
           .select("*")
-          .eq("center_id", center.id)
+          .eq("center_subdomain", currentCenter)
           .eq("email", email.trim())
           .eq("password", password.trim())
           .maybeSingle();
@@ -269,7 +269,7 @@ const Login: React.FC = () => {
         const { data: admin, error: adminError } = await supabase
           .from("admins")
           .select("*")
-          .eq("center_id", center.id)
+          .eq("center_subdomain", currentCenter)
           .eq("email", email.trim())
           .eq("password", password.trim())
           .maybeSingle();
@@ -284,9 +284,9 @@ const Login: React.FC = () => {
       if (!userData) {
         const { data: parent, error: parentError } = await supabase
           .from("parents")
-          .select("*, students!inner(center_id)")
+          .select("*, students!inner(center_subdomain)")
           .eq("email", email.trim())
-          .eq("students.center_id", center.id)
+          .eq("students.center_subdomain", currentCenter)
           .maybeSingle();
 
         if (!parentError && parent) {

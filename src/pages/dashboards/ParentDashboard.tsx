@@ -98,7 +98,7 @@ const ParentDashboard: React.FC = () => {
           .from('students')
           .select('*')
           .eq('parent_id', user.id)
-          .eq('center_id', center.id);
+          .eq('center_subdomain', centerSubdomain);
 
         if (studentsData) {
           setChildren(studentsData.map(s => ({
