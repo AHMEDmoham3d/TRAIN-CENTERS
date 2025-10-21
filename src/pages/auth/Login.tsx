@@ -183,8 +183,8 @@
 // };
 // 📁 src/pages/auth/Login.jsx
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Layers, ArrowRight, Loader2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
 
@@ -209,114 +209,41 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      const currentCenter = centerSlug || localStorage.getItem("center_subdomain");
-
-      if (!currentCenter) {
-        setErrorMsg("⚠️ Center not detected. Please use the correct center link.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ التحقق من وجود المركز فعلاً
-      const { data: center, error: centerError } = await supabase
-        .from("centers")
-        .select("id, subdomain")
-        .ilike("subdomain", currentCenter)
-        .maybeSingle();
-
-      if (centerError || !center) {
-        setErrorMsg("❌ This center does not exist.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ البحث في جداول الأدوار المرتبطة بالسنتر
-      let userData: any = null;
-      let role: string = "";
-
-      // Check students table
-      const { data: student, error: studentError } = await supabase
-        .from("students")
+      const { data: user, error } = await supabase
+        .from("users")
         .select("*")
-        .eq("center_subdomain", currentCenter)
         .eq("email", email.trim())
-        .eq("password", password.trim())
         .maybeSingle();
 
-      if (!studentError && student) {
-        userData = student;
-        role = "student";
-      }
-
-      // If not found, check teachers
-      if (!userData) {
-        const { data: teacher, error: teacherError } = await supabase
-          .from("teachers")
-          .select("*")
-          .eq("center_subdomain", currentCenter)
-          .eq("email", email.trim())
-          .eq("password", password.trim())
-          .maybeSingle();
-
-        if (!teacherError && teacher) {
-          userData = teacher;
-          role = "teacher";
-        }
-      }
-
-      // If not found, check admins
-      if (!userData) {
-        const { data: admin, error: adminError } = await supabase
-          .from("admins")
-          .select("*")
-          .eq("center_subdomain", currentCenter)
-          .eq("email", email.trim())
-          .eq("password", password.trim())
-          .maybeSingle();
-
-        if (!adminError && admin) {
-          userData = admin;
-          role = "admin";
-        }
-      }
-
-      // If not found, check parents (via students)
-      if (!userData) {
-        const { data: parent, error: parentError } = await supabase
-          .from("parents")
-          .select("*, students!inner(center_subdomain)")
-          .eq("email", email.trim())
-          .eq("students.center_subdomain", currentCenter)
-          .maybeSingle();
-
-        if (!parentError && parent) {
-          userData = parent;
-          role = "parent";
-        }
-      }
-
-      if (!userData) {
-        setErrorMsg("❌ Incorrect email or password for this center.");
+      if (error || !user) {
+        setErrorMsg("❌ Email not found.");
         setLoading(false);
         return;
       }
 
-      // ✅ حفظ بيانات المستخدم في localStorage أو state (يمكن تحسينه لاحقاً)
-      localStorage.setItem("user", JSON.stringify({
-        id: userData.id,
-        name: userData.full_name || userData.name,
-        email: userData.email,
-        role,
-        center_subdomain: currentCenter,
-      }));
+      if (user.password.trim() !== password.trim()) {
+        setErrorMsg("❌ Incorrect password.");
+        setLoading(false);
+        return;
+      }
 
-      // ✅ تحديد المسار الصحيح داخل نفس المركز
-      const safePath = `/${currentCenter}/dashboard/${role}`;
-      console.log("Redirecting to:", safePath);
+      // ✅ Save user data
+      localStorage.setItem(
+        "user",
+        JSON.stringify({
+          id: user.id,
+          name: user.full_name,
+          email: user.email,
+          role: user.role,
+          phone: user.phone,
+          center_subdomain: centerSlug || localStorage.getItem("center_subdomain") || "gammal",
+        })
+      );
 
-      // ✅ تنقل داخلي آمن داخل نفس الـ origin
-      navigate(safePath, { replace: true });
-
+      // ✅ Redirect based on role
+      const redirectPath = `/${centerSlug || "gammal"}/dashboard/${user.role}`;
+      console.log("Redirecting to:", redirectPath);
+      navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("Unexpected error occurred. Please try again later.");
@@ -350,34 +277,30 @@ const Login: React.FC = () => {
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email
               </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="you@example.com"
-                />
-              </div>
+              <input
+                id="email"
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                placeholder="you@example.com"
+              />
             </div>
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
               </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="Enter your password"
-                />
-              </div>
+              <input
+                id="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                placeholder="Enter your password"
+              />
             </div>
 
             {errorMsg && (
@@ -386,18 +309,14 @@ const Login: React.FC = () => {
               </div>
             )}
 
-            <div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
+            </button>
           </form>
-
-
         </div>
       </div>
     </div>
