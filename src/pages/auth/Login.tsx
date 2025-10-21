@@ -181,182 +181,142 @@
 //     </div>
 //   );
 // };
-
-// 📁 src/pages/auth/Login.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
-import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
+import { Loader2 } from "lucide-react";
 
-const Login: React.FC = () => {
+const Login = () => {
   const navigate = useNavigate();
-  const { centerSlug } = useParams<{ centerSlug?: string }>();
-
+  const { centerSlug } = useParams(); // اسم السنتر من اللينك
+  const [centerId, setCenterId] = useState(null);
+  const [loadingCenter, setLoadingCenter] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ جلب center_id بناءً على centerSlug
   useEffect(() => {
-    if (centerSlug) {
-      // حفظ اسم السنتر الحالي
-      localStorage.setItem("center_subdomain", centerSlug.trim());
-    } else {
-      // ✅ لو مفيش سنتر في اللينك احذف أي سنتر محفوظ
-      localStorage.removeItem("center_subdomain");
-    }
+    const fetchCenter = async () => {
+      if (!centerSlug) {
+        setLoadingCenter(false);
+        return; // المستخدم داخل من اللينك الأساسي
+      }
+
+      const { data, error } = await supabase
+        .from("centers")
+        .select("id, name")
+        .eq("subdomain", centerSlug)
+        .single();
+
+      if (error || !data) {
+        setError("❌ هذا المركز غير موجود.");
+      } else {
+        setCenterId(data.id);
+      }
+
+      setLoadingCenter(false);
+    };
+
+    fetchCenter();
   }, [centerSlug]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // ✅ تسجيل الدخول
+  const handleLogin = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setErrorMsg("");
+    setError("");
 
-    const currentCenter =
-      centerSlug || localStorage.getItem("center_subdomain");
-
-    // ✅ منع تسجيل الدخول بدون سنتر
-    if (!currentCenter) {
-      setErrorMsg("⚠️ Please access the login page through your center link (e.g., /gammal/login)");
-      setLoading(false);
+    if (!centerSlug || !centerId) {
+      setError("❌ لا يمكن تسجيل الدخول بدون تحديد المركز.");
       return;
     }
 
-    try {
-      // ✅ تحقق من وجود السنتر أولاً
-      const { data: center, error: centerError } = await supabase
-        .from("centers")
-        .select("id, subdomain")
-        .ilike("subdomain", currentCenter)
-        .maybeSingle();
+    setLoading(true);
 
-      if (centerError || !center) {
-        setErrorMsg("❌ This center does not exist.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ ابحث عن المستخدم داخل نفس السنتر
-      const { data: user, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", email.trim())
-        .eq("center_id", center.id)
-        .maybeSingle();
-
-      if (userError) {
-        console.error("User query error:", userError);
-        setErrorMsg("⚠️ Error fetching user data.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ التحقق من المستخدم وكلمة المرور
-      if (!user) {
-        setErrorMsg("❌ Email not found.");
-        setLoading(false);
-        return;
-      }
-
-      if (user.password.trim() !== password.trim()) {
-        setErrorMsg("❌ Incorrect password.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ حفظ بيانات المستخدم في localStorage
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: user.id,
-          name: user.full_name,
-          email: user.email,
-          role: user.role,
-          phone: user.phone,
-          center_subdomain: center.subdomain,
-        })
-      );
-
-      // ✅ تحويل حسب الدور
-      const redirectPath = `/${center.subdomain}/dashboard/${user.role}`;
-      console.log("Redirecting to:", redirectPath);
-      navigate(redirectPath, { replace: true });
-    } catch (err) {
-      console.error("Login error:", err);
-      setErrorMsg("Unexpected error occurred. Please try again later.");
-    }
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("email", email)
+      .eq("password", password)
+      .eq("center_id", centerId)
+      .single();
 
     setLoading(false);
+
+    if (error || !data) {
+      setError("❌ Email not found.");
+    } else {
+      localStorage.setItem("user", JSON.stringify(data));
+
+      // توجيه بناءً على الدور
+      if (data.role === "student") {
+        navigate(`/${centerSlug}/dashboard/student`);
+      } else if (data.role === "teacher") {
+        navigate(`/${centerSlug}/dashboard/teacher`);
+      } else if (data.role === "admin") {
+        navigate(`/${centerSlug}/dashboard/admin`);
+      } else {
+        navigate(`/${centerSlug}/dashboard`);
+      }
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <Layers className="mx-auto h-12 w-auto text-primary-500" />
-        </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          EduTech Platform
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          Sign in to access your learning center
+  if (loadingCenter) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="animate-spin" /> جاري تحميل المركز...
+      </div>
+    );
+  }
+
+  if (!centerSlug) {
+    return (
+      <div className="flex flex-col justify-center items-center h-screen text-center">
+        <h2 className="text-xl font-bold mb-4">يرجى الدخول من خلال رابط مركز محدد</h2>
+        <p className="text-gray-500">
+          مثل: https://train-centers-bw5s.vercel.app/<b>gammal</b>
         </p>
       </div>
+    );
+  }
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          <div className="flex justify-end mb-4">
-            <LanguageSwitcher />
-          </div>
+  return (
+    <div className="flex justify-center items-center h-screen bg-gray-100">
+      <form
+        onSubmit={handleLogin}
+        className="bg-white p-6 rounded-2xl shadow-lg w-96"
+      >
+        <h2 className="text-2xl font-bold mb-4 text-center">تسجيل الدخول إلى مركز {centerSlug}</h2>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                placeholder="you@example.com"
-              />
-            </div>
+        {error && <div className="text-red-500 text-center mb-3">{error}</div>}
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                placeholder="Enter your password"
-              />
-            </div>
+        <input
+          type="email"
+          placeholder="البريد الإلكتروني"
+          className="w-full mb-3 p-2 border rounded"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
 
-            {errorMsg && (
-              <div className="rounded-md bg-red-50 p-4">
-                <p className="text-sm font-medium text-red-700">{errorMsg}</p>
-              </div>
-            )}
+        <input
+          type="password"
+          placeholder="كلمة المرور"
+          className="w-full mb-3 p-2 border rounded"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
-            >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
-            </button>
-          </form>
-        </div>
-      </div>
+        <button
+          type="submit"
+          className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 transition"
+          disabled={loading}
+        >
+          {loading ? "جارٍ التحقق..." : "تسجيل الدخول"}
+        </button>
+      </form>
     </div>
   );
 };
