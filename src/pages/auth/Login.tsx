@@ -181,6 +181,7 @@
 //     </div>
 //   );
 // };
+
 // 📁 src/pages/auth/Login.jsx
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -196,23 +197,55 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [centerId, setCenterId] = useState<string | null>(null);
 
+  // ✅ Get center info from localStorage or Supabase
   useEffect(() => {
-    if (centerSlug) {
-      localStorage.setItem("center_subdomain", centerSlug.trim());
+    const savedSlug = centerSlug || localStorage.getItem("center_subdomain");
+    if (savedSlug) {
+      localStorage.setItem("center_subdomain", savedSlug.trim());
+      fetchCenterId(savedSlug.trim());
     }
   }, [centerSlug]);
 
+  // ✅ Get center_id from "centers" table based on slug
+  const fetchCenterId = async (slug: string) => {
+    try {
+      const { data, error } = await supabase
+        .from("centers")
+        .select("id")
+        .eq("subdomain", slug)
+        .maybeSingle();
+
+      if (!error && data) {
+        setCenterId(data.id);
+      } else {
+        console.error("Center not found for slug:", slug);
+      }
+    } catch (err) {
+      console.error("Error fetching center ID:", err);
+    }
+  };
+
+  // ✅ Handle login
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
     try {
+      if (!centerId) {
+        setErrorMsg("❌ Center not found. Please refresh and try again.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Check if email exists in this center
       const { data: user, error } = await supabase
         .from("users")
         .select("*")
         .eq("email", email.trim())
+        .eq("center_id", centerId)
         .maybeSingle();
 
       if (error || !user) {
@@ -221,6 +254,7 @@ const Login: React.FC = () => {
         return;
       }
 
+      // ✅ Check password
       if (user.password.trim() !== password.trim()) {
         setErrorMsg("❌ Incorrect password.");
         setLoading(false);
@@ -236,6 +270,7 @@ const Login: React.FC = () => {
           email: user.email,
           role: user.role,
           phone: user.phone,
+          center_id: user.center_id,
           center_subdomain: centerSlug || localStorage.getItem("center_subdomain") || "gammal",
         })
       );
