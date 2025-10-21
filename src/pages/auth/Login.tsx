@@ -196,7 +196,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // 🧩 Store center subdomain if it exists
+  // 🧩 Store center subdomain in localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
@@ -209,9 +209,9 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // 🧩 Step 1: Get center_id from the subdomain
+      // 🧩 Step 1: Get center_id from subdomain
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
-      let centerId = null;
+      let centerId: string | null = null;
 
       if (currentSlug) {
         const { data: centerData, error: centerError } = await supabase
@@ -220,13 +220,8 @@ const Login: React.FC = () => {
           .eq("subdomain", currentSlug)
           .maybeSingle();
 
-        if (centerError) {
-          console.error("Center fetch error:", centerError);
-        }
-
-        if (centerData) {
-          centerId = centerData.id;
-        }
+        if (centerError) console.error("Center fetch error:", centerError);
+        if (centerData) centerId = centerData.id;
       }
 
       console.log("🔍 Email:", email);
@@ -234,27 +229,42 @@ const Login: React.FC = () => {
       console.log("🔍 Center ID:", centerId);
       console.log("🔍 Center Slug:", centerSlug);
 
-      // 🧩 Step 2: Search for user within that center
-      const { data: user, error: userError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("email", email.trim())
-        .eq("password", password.trim())
-        .eq("center_id", centerId)
-        .maybeSingle();
-
-      if (userError) {
-        console.error("User fetch error:", userError);
-        throw userError;
+      if (!centerId) {
+        setErrorMsg("❌ Center not found.");
+        setLoading(false);
+        return;
       }
 
-      if (!user) {
+      // 🧩 Step 2: Fetch user inside that center
+      const response = await fetch(
+        `https://biqzcfbcsflriybyvtur.supabase.co/rest/v1/users?select=*&email=eq.${encodeURIComponent(
+          email.trim()
+        )}&password=eq.${encodeURIComponent(password.trim())}&center_id=eq.${centerId}`,
+        {
+          headers: {
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        console.error("User query failed:", response.status);
+        throw new Error(`Supabase returned ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data || data.length === 0) {
         setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
       }
 
-      // 🧩 Step 3: Save user info
+      const user = data[0];
+
+      // 🧩 Step 3: Save user info in localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -267,13 +277,29 @@ const Login: React.FC = () => {
         })
       );
 
-      // 🧩 Step 4: Redirect based on role
-      const redirectPath = `/${currentSlug || "gammal"}/dashboard/${user.role}`;
-      console.log("Redirecting to:", redirectPath);
+      // 🧩 Step 4: Redirect user by role
+      let redirectPath = `/${currentSlug || "gammal"}/dashboard`;
+
+      switch (user.role) {
+        case "student":
+          redirectPath += "/student";
+          break;
+        case "teacher":
+          redirectPath += "/teacher";
+          break;
+        case "admin":
+          redirectPath += "/admin";
+          break;
+        default:
+          redirectPath += "/student";
+          break;
+      }
+
+      console.log("✅ Redirecting to:", redirectPath);
       navigate(redirectPath, { replace: true });
     } catch (err) {
       console.error("Login error:", err);
-      setErrorMsg("Unexpected error occurred. Please try again later.");
+      setErrorMsg("⚠️ An unexpected error occurred. Please try again.");
     }
 
     setLoading(false);
