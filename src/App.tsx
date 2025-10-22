@@ -322,7 +322,7 @@ import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 
-// ✅ Private Route
+// ✅ Private Route (requires login)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -332,42 +332,48 @@ const PrivateRoute = ({
 }) => {
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!isAuthenticated || !user) {
-      const parts = location.pathname.split("/");
-      const centerSlug = parts[1] || "";
-      navigate(`/${centerSlug}/login`, { replace: true });
-    } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-      navigate(`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`, { replace: true });
-    }
-  }, [isAuthenticated, user, location, navigate, allowedRoles]);
+  // 🚫 لو المستخدم مش مسجل دخول
+  if (!isAuthenticated || !user) {
+    const parts = location.pathname.split("/");
+    const centerSlug = parts[1] || "";
+    return <Navigate to={`/${centerSlug}/login`} replace />;
+  }
 
-  if (!isAuthenticated || !user) return null;
-  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) return null;
+  // 🚫 لو دوره مش مسموح
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+    return (
+      <Navigate
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
+        replace
+      />
+    );
+  }
 
+  // ✅ كل حاجة تمام
   return children;
 };
 
-// ✅ Public Route
+// ✅ Public Route (لـ login/register)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
-  const navigate = useNavigate();
 
-  useEffect(() => {
-    if (isAuthenticated && user) {
-      navigate(`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`, { replace: true });
-    }
-  }, [isAuthenticated, user, navigate]);
+  if (isAuthenticated && user) {
+    return (
+      <Navigate
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
+        replace
+      />
+    );
+  }
 
-  if (isAuthenticated && user) return null;
   return children;
 };
 
 // ✅ Landing Page Wrapper
 function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (centerSlug) {
@@ -380,16 +386,8 @@ function CenterLanding() {
 
 function App() {
   const { i18n } = useTranslation();
-  const { initialize, logout } = useAuthStore();
+  const { initialize } = useAuthStore();
   const location = useLocation();
-
-  useEffect(() => {
-    // 🚫 حذف أي بيانات قديمة
-    localStorage.removeItem("sb-biqzcfbcsflriybyvtur-auth-token");
-    localStorage.removeItem("user");
-    supabase.auth.signOut();
-    logout();
-  }, []);
 
   useEffect(() => {
     initialize();
