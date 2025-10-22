@@ -292,8 +292,7 @@
 //       </main>
 //     </>
 //   );
-// }
-import { useEffect } from "react";
+// }import { useEffect } from "react";
 import {
   Routes,
   Route,
@@ -320,8 +319,9 @@ import SubscriptionPlans from "./pages/subscriptions/SubscriptionPlans";
 import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
+import { useEffect } from "react";
 
-// ✅ Private Route (requires login)
+// ✅ Private Route (requires manual login)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -332,12 +332,14 @@ const PrivateRoute = ({
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
 
+  // 🚫 ممنوع الدخول بدون تسجيل دخول فعلي
   if (!isAuthenticated || !user) {
     const parts = location.pathname.split("/");
     const centerSlug = parts[1] || "";
     return <Navigate to={`/${centerSlug}/login`} replace />;
   }
 
+  // ✅ السماح فقط بالرول المسموح به
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
@@ -352,18 +354,7 @@ const PrivateRoute = ({
 
 // ✅ Public Route (for login/register)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
-  const { isAuthenticated, user } = useAuthStore();
-
-  // 🚫 حتى لو في بيانات في localStorage، لازم المستخدم يعمل تسجيل دخول يدوي
-  if (isAuthenticated && user) {
-    return (
-      <Navigate
-        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
-        replace
-      />
-    );
-  }
-
+  // ✅ لا دخول تلقائي حتى لو المستخدم مسجل من قبل
   return children;
 };
 
@@ -387,12 +378,12 @@ function App() {
   const location = useLocation();
 
   useEffect(() => {
-    // 🚫 نحذف أي بيانات قديمة من localStorage عند تحميل التطبيق
+    // 🚫 حذف بيانات الجلسة القديمة عند تحميل الموقع لتجنب الدخول التلقائي
     localStorage.removeItem("sb-biqzcfbcsflriybyvtur-auth-token");
     localStorage.removeItem("user");
     supabase.auth.signOut();
     logout();
-  }, []);
+  }, [logout]);
 
   useEffect(() => {
     initialize();
