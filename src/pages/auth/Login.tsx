@@ -180,7 +180,8 @@
 //       </div>
 //     </div>
 //   );
-// };import React, { useState, useEffect } from "react";
+// };
+// import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -196,7 +197,6 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // 🧩 Save center slug in localStorage
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
@@ -209,15 +209,12 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // 🧩 Step 1: Sign in using Supabase Auth
-      const { data: signInData, error: signInError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password.trim(),
-        });
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim(),
+      });
 
       if (signInError) {
-        console.error("Auth Error:", signInError.message);
         setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
@@ -230,7 +227,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🧩 Step 2: Get center id from subdomain
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
       let centerId: string | null = null;
 
@@ -240,7 +236,6 @@ const Login: React.FC = () => {
           .select("id")
           .eq("subdomain", currentSlug)
           .maybeSingle();
-
         if (centerError) console.error("Center fetch error:", centerError);
         if (centerData) centerId = centerData.id;
       }
@@ -251,7 +246,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🧩 Step 3: Get user info only if belongs to this center
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -260,7 +254,6 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (userError) {
-        console.error("User fetch error:", userError.message);
         setErrorMsg("⚠️ Error fetching user data.");
         setLoading(false);
         return;
@@ -272,7 +265,6 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🧩 Step 4: Save user info locally
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -285,27 +277,7 @@ const Login: React.FC = () => {
         })
       );
 
-      // 🧩 Step 5: Redirect based on role
-      let redirectPath = `/${currentSlug || "gammal"}/dashboard`;
-
-      switch (userData.role) {
-        case "student":
-          redirectPath += "/student";
-          break;
-        case "teacher":
-          redirectPath += "/teacher";
-          break;
-        case "admin":
-          redirectPath += "/admin";
-          break;
-        case "parent":
-          redirectPath += "/parent";
-          break;
-        default:
-          redirectPath += "/student";
-          break;
-      }
-
+      const redirectPath = `/${currentSlug || "gammal"}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
       navigate(redirectPath, { replace: true });
     } catch (err) {
@@ -338,10 +310,7 @@ const Login: React.FC = () => {
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email
               </label>
               <input
@@ -356,10 +325,7 @@ const Login: React.FC = () => {
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm font-medium text-gray-700"
-              >
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
               </label>
               <input
@@ -384,11 +350,7 @@ const Login: React.FC = () => {
               disabled={loading}
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              {loading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                "Sign in"
-              )}
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
             </button>
           </form>
         </div>

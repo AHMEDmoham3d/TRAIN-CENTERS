@@ -322,7 +322,7 @@ import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 
-// ✅ Private Route (requires login)
+// ✅ Private Route
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -333,14 +333,14 @@ const PrivateRoute = ({
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
 
-  // 🚫 لو المستخدم مش مسجل دخول
+  // لو المستخدم مش مسجل دخول
   if (!isAuthenticated || !user) {
     const parts = location.pathname.split("/");
     const centerSlug = parts[1] || "";
     return <Navigate to={`/${centerSlug}/login`} replace />;
   }
 
-  // 🚫 لو دوره مش مسموح
+  // لو الدور غير مسموح
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
@@ -350,21 +350,25 @@ const PrivateRoute = ({
     );
   }
 
-  // ✅ كل حاجة تمام
   return children;
 };
 
-// ✅ Public Route (لـ login/register)
+// ✅ Public Route
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
+  const location = useLocation();
 
+  // منع الدخول المباشر لو مستخدم بالفعل داخل النظام
   if (isAuthenticated && user) {
-    return (
-      <Navigate
-        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
-        replace
-      />
-    );
+    const fromLanding = location.pathname.includes("/login") || location.pathname.includes("/register");
+    if (fromLanding) {
+      return (
+        <Navigate
+          to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
+          replace
+        />
+      );
+    }
   }
 
   return children;
@@ -378,6 +382,8 @@ function CenterLanding() {
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
+      // 🧩 تنظيف بيانات المستخدم عند زيارة الصفحة الرئيسية للسنتر
+      localStorage.removeItem("user");
     }
   }, [centerSlug]);
 
