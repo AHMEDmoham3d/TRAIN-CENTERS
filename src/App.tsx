@@ -303,6 +303,7 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
+
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -318,7 +319,7 @@ import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 
-// 🔐 Private Route (requires login)
+// ✅ Private Route
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -347,7 +348,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 Public Route (for guests only)
+// ✅ Public Route
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -363,18 +364,17 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ Landing page for each center (like /gammal/)
+// ✅ Component to handle center route (just show LandingPage)
 function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
-    } else {
-      localStorage.removeItem("center_subdomain");
     }
   }, [centerSlug]);
 
+  // 👇 Show the main landing page (no custom content)
   return <LandingPage />;
 }
 
@@ -398,11 +398,11 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* Redirect default login/register to gammal */}
+        {/* ✅ Default redirects */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
         <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Landing Page for each center (like /gammal/) */}
+        {/* ✅ Landing Page for centers */}
         <Route path="/:centerSlug" element={<CenterLanding />} />
 
         {/* ✅ Auth routes */}
