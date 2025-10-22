@@ -230,7 +230,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🧩 Step 2: Get current center id from subdomain
+      // 🧩 Step 2: Get center id from subdomain
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
       let centerId: string | null = null;
 
@@ -251,11 +251,12 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🧩 Step 3: Get user info from `users` table (extended info)
+      // 🧩 Step 3: Get user info only if belongs to this center
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("*")
         .eq("id", user.id)
+        .eq("center_id", centerId)
         .maybeSingle();
 
       if (userError) {
@@ -266,12 +267,12 @@ const Login: React.FC = () => {
       }
 
       if (!userData) {
-        setErrorMsg("❌ User profile not found.");
+        setErrorMsg("❌ This account is not registered in this center.");
         setLoading(false);
         return;
       }
 
-      // 🧩 Step 4: Save user info to localStorage
+      // 🧩 Step 4: Save user info locally
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -296,6 +297,9 @@ const Login: React.FC = () => {
           break;
         case "admin":
           redirectPath += "/admin";
+          break;
+        case "parent":
+          redirectPath += "/parent";
           break;
         default:
           redirectPath += "/student";

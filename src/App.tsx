@@ -319,7 +319,7 @@ import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 
-// ✅ Private Route
+// ✅ Private Route (requires login)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -348,7 +348,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// ✅ Public Route
+// ✅ Public Route (for login/register)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -364,7 +364,7 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ Component to handle center route (just show LandingPage)
+// ✅ Landing Page Wrapper (center-specific)
 function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
@@ -374,7 +374,7 @@ function CenterLanding() {
     }
   }, [centerSlug]);
 
-  // 👇 Show the main landing page (no custom content)
+  // 👇 Render normal landing page (same as /)
   return <LandingPage />;
 }
 
@@ -402,10 +402,10 @@ function App() {
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
         <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Landing Page for centers */}
+        {/* ✅ Landing Page for specific center */}
         <Route path="/:centerSlug" element={<CenterLanding />} />
 
-        {/* ✅ Auth routes */}
+        {/* ✅ Auth Routes */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -513,7 +513,7 @@ function App() {
           }
         />
 
-        {/* ✅ Main site landing + 404 */}
+        {/* ✅ Landing + 404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
