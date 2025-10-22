@@ -300,6 +300,7 @@ import {
   useLocation,
   Navigate,
   useParams,
+  useNavigate,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
@@ -321,7 +322,7 @@ import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
 import CenterPage from "./pages/CenterPage";
 
-// 🔐 المسار المحمي (للأعضاء فقط)
+// 🔐 مسار خاص بالمستخدمين المسجلين
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -341,7 +342,7 @@ const PrivateRoute = ({
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
-        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain || "gammal"}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -350,14 +351,14 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 المسار العام (لغير المسجلين)
+// 🔓 مسار عام (لغير المسجلين)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
   if (isAuthenticated && user) {
     return (
       <Navigate
-        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain || "gammal"}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -366,10 +367,10 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ التحقق من السنتر وتوجيهه لصفحة تسجيل الدخول مباشرة
+// ✅ اكتشاف السنتر من الرابط وعرض صفحته
 function CenterDetector() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
-  const navigate = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (centerSlug) {
@@ -379,14 +380,8 @@ function CenterDetector() {
     }
   }, [centerSlug]);
 
-  // ✅ أي مستخدم يدخل على /gammal يتم تحويله مباشرة إلى /gammal/login
-  useEffect(() => {
-    if (centerSlug) {
-      window.location.replace(`/${centerSlug}/login`);
-    }
-  }, [centerSlug]);
-
-  return null;
+  // ✅ لو السنتر موجود، نعرض الصفحة الخاصة به
+  return <CenterPage />;
 }
 
 function App() {
@@ -394,17 +389,14 @@ function App() {
   const { initialize } = useAuthStore();
   const location = useLocation();
 
-  // ✅ تهيئة نظام المصادقة
   useEffect(() => {
     initialize();
   }, [initialize]);
 
-  // ✅ تغيير العنوان عند التنقل
   useEffect(() => {
     document.title = "EduTech - AI Learning Platform";
   }, [location]);
 
-  // ✅ تغيير اتجاه اللغة
   useEffect(() => {
     document.documentElement.dir = i18n.language === "ar" ? "rtl" : "ltr";
   }, [i18n.language]);
@@ -412,14 +404,11 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ التوجيه الافتراضي */}
+        {/* ✅ تحويل افتراضي */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
-        <Route
-          path="/register"
-          element={<Navigate to="/gammal/register" replace />}
-        />
+        <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ الدخول إلى سنتر معين */}
+        {/* ✅ صفحة السنتر */}
         <Route path="/:centerSlug" element={<CenterDetector />} />
 
         {/* ✅ صفحات المصادقة */}
@@ -474,13 +463,11 @@ function App() {
           }
         />
 
-        {/* ✅ الدورات */}
+        {/* ✅ الكورسات */}
         <Route
           path="/:centerSlug/courses/:courseId"
           element={
-            <PrivateRoute
-              allowedRoles={["student", "teacher", "parent", "admin"]}
-            >
+            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
               <CourseView />
             </PrivateRoute>
           }
@@ -498,9 +485,7 @@ function App() {
         <Route
           path="/:centerSlug/assignments/:assignmentId"
           element={
-            <PrivateRoute
-              allowedRoles={["student", "teacher", "parent", "admin"]}
-            >
+            <PrivateRoute allowedRoles={["student", "teacher", "parent", "admin"]}>
               <AssignmentView />
             </PrivateRoute>
           }
@@ -534,7 +519,7 @@ function App() {
           }
         />
 
-        {/* ✅ الصفحة الرئيسية و404 */}
+        {/* ✅ الصفحة الرئيسية العامة و 404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
