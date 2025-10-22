@@ -300,12 +300,9 @@ import {
   useLocation,
   Navigate,
   useParams,
-  useNavigate,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
-
-// ✅ الصفحات
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -320,9 +317,8 @@ import SubscriptionPlans from "./pages/subscriptions/SubscriptionPlans";
 import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
-import CenterPage from "./pages/CenterPage";
 
-// 🔐 مسار خاص بالمستخدمين المسجلين
+// 🔐 Private Route (requires login)
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -334,15 +330,15 @@ const PrivateRoute = ({
   const location = useLocation();
 
   if (!isAuthenticated || !user) {
-    const pathParts = location.pathname.split("/");
-    const centerSlug = pathParts[1] || "";
+    const parts = location.pathname.split("/");
+    const centerSlug = parts[1] || "";
     return <Navigate to={`/${centerSlug}/login`} replace />;
   }
 
   if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
     return (
       <Navigate
-        to={`/${user.center_subdomain || "gammal"}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -351,14 +347,14 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 مسار عام (لغير المسجلين)
+// 🔓 Public Route (guests only)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
   if (isAuthenticated && user) {
     return (
       <Navigate
-        to={`/${user.center_subdomain || "gammal"}/dashboard/${user.role.toLowerCase()}`}
+        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
         replace
       />
     );
@@ -367,21 +363,18 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ اكتشاف السنتر من الرابط وعرض صفحته
-function CenterDetector() {
+// ✅ This component just saves the slug in localStorage then shows landing
+function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
-    } else {
-      localStorage.removeItem("center_subdomain");
     }
   }, [centerSlug]);
 
-  // ✅ لو السنتر موجود، نعرض الصفحة الخاصة به
-  return <CenterPage />;
+  // 👇 Show the same landing page of the main site
+  return <LandingPage />;
 }
 
 function App() {
@@ -404,14 +397,14 @@ function App() {
   return (
     <main className="min-h-screen bg-gray-50">
       <Routes>
-        {/* ✅ تحويل افتراضي */}
+        {/* Redirect default login/register to gammal */}
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
         <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ صفحة السنتر */}
-        <Route path="/:centerSlug" element={<CenterDetector />} />
+        {/* ✅ Landing Page for each center (like /gammal/) */}
+        <Route path="/:centerSlug" element={<CenterLanding />} />
 
-        {/* ✅ صفحات المصادقة */}
+        {/* ✅ Auth routes */}
         <Route
           path="/:centerSlug/login"
           element={
@@ -429,7 +422,7 @@ function App() {
           }
         />
 
-        {/* ✅ لوحات التحكم */}
+        {/* ✅ Dashboards */}
         <Route
           path="/:centerSlug/dashboard/student"
           element={
@@ -463,7 +456,7 @@ function App() {
           }
         />
 
-        {/* ✅ الكورسات */}
+        {/* ✅ Courses */}
         <Route
           path="/:centerSlug/courses/:courseId"
           element={
@@ -481,7 +474,7 @@ function App() {
           }
         />
 
-        {/* ✅ الواجبات */}
+        {/* ✅ Assignments */}
         <Route
           path="/:centerSlug/assignments/:assignmentId"
           element={
@@ -491,7 +484,7 @@ function App() {
           }
         />
 
-        {/* ✅ الاشتراكات */}
+        {/* ✅ Subscriptions */}
         <Route
           path="/:centerSlug/subscriptions"
           element={
@@ -509,7 +502,7 @@ function App() {
           }
         />
 
-        {/* ✅ الإعدادات */}
+        {/* ✅ Settings */}
         <Route
           path="/:centerSlug/settings"
           element={
@@ -519,7 +512,7 @@ function App() {
           }
         />
 
-        {/* ✅ الصفحة الرئيسية العامة و 404 */}
+        {/* ✅ Main site landing + 404 */}
         <Route path="/" element={<LandingPage />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
