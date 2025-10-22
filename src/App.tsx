@@ -303,7 +303,9 @@ import {
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
+import { supabase } from "./lib/supabase";
 
+// ✅ الصفحات
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import StudentDashboard from "./pages/dashboards/StudentDashboard";
@@ -352,6 +354,7 @@ const PrivateRoute = ({
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
+  // 🚫 حتى لو في بيانات في localStorage، لازم المستخدم يعمل تسجيل دخول يدوي
   if (isAuthenticated && user) {
     return (
       <Navigate
@@ -374,14 +377,22 @@ function CenterLanding() {
     }
   }, [centerSlug]);
 
-  // 👇 Render normal landing page (same as /)
+  // 👇 عرض صفحة اللاندينج العادية
   return <LandingPage />;
 }
 
 function App() {
   const { i18n } = useTranslation();
-  const { initialize } = useAuthStore();
+  const { initialize, logout } = useAuthStore();
   const location = useLocation();
+
+  useEffect(() => {
+    // 🚫 نحذف أي بيانات قديمة من localStorage عند تحميل التطبيق
+    localStorage.removeItem("sb-biqzcfbcsflriybyvtur-auth-token");
+    localStorage.removeItem("user");
+    supabase.auth.signOut();
+    logout();
+  }, []);
 
   useEffect(() => {
     initialize();
