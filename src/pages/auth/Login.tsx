@@ -180,12 +180,12 @@
 //       </div>
 //     </div>
 //   );
-// };
-import React, { useState, useEffect } from "react";
+// };import React, { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import LanguageSwitcher from "../../components/ui/LanguageSwitcher";
+import { useState, useEffect } from "react";
 
 const Login: React.FC = () => {
   const navigate = useNavigate();

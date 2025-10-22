@@ -436,7 +436,7 @@ function App() {
 
         {/* ✅ Dashboards */}
         <Route
-          path="/:centerSlug/dashboards/student"
+          path="/:centerSlug/dashboard/student"
           element={
             <PrivateRoute allowedRoles={["student"]}>
               <StudentDashboard />
