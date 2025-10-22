@@ -293,7 +293,6 @@
 //     </>
 //   );
 // }
-
 import { useEffect } from "react";
 import {
   Routes,
@@ -348,7 +347,7 @@ const PrivateRoute = ({
   return children;
 };
 
-// 🔓 Public Route (guests only)
+// 🔓 Public Route (for guests only)
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
   const { isAuthenticated, user } = useAuthStore();
 
@@ -364,22 +363,20 @@ const PublicRoute = ({ children }: { children: JSX.Element }) => {
   return children;
 };
 
-// ✅ This component just saves the slug in localStorage then shows landing
+// ✅ Landing page for each center (like /gammal/)
 function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
+    } else {
+      localStorage.removeItem("center_subdomain");
     }
   }, [centerSlug]);
 
-  // 👇 Show the same landing page of the main site
   return <LandingPage />;
 }
-
-// ✅ Center Detector Component - checks if center exists and shows login button
-function CenterDetector() {
 
 function App() {
   const { i18n } = useTranslation();
