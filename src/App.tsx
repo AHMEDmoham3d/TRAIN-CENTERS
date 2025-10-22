@@ -293,12 +293,14 @@
 //     </>
 //   );
 // }import { useEffect } from "react";
+import { useEffect } from "react";
 import {
   Routes,
   Route,
   useLocation,
   Navigate,
   useParams,
+  useNavigate,
 } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
@@ -319,9 +321,8 @@ import SubscriptionPlans from "./pages/subscriptions/SubscriptionPlans";
 import SubscriptionCheckout from "./pages/subscriptions/SubscriptionCheckout";
 import Settings from "./pages/settings/Settings";
 import LandingPage from "./pages/LandingPage";
-import { useEffect } from "react";
 
-// ✅ Private Route (requires manual login)
+// ✅ Private Route
 const PrivateRoute = ({
   children,
   allowedRoles,
@@ -331,34 +332,40 @@ const PrivateRoute = ({
 }) => {
   const { isAuthenticated, user } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
 
-  // 🚫 ممنوع الدخول بدون تسجيل دخول فعلي
-  if (!isAuthenticated || !user) {
-    const parts = location.pathname.split("/");
-    const centerSlug = parts[1] || "";
-    return <Navigate to={`/${centerSlug}/login`} replace />;
-  }
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      const parts = location.pathname.split("/");
+      const centerSlug = parts[1] || "";
+      navigate(`/${centerSlug}/login`, { replace: true });
+    } else if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+      navigate(`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`, { replace: true });
+    }
+  }, [isAuthenticated, user, location, navigate, allowedRoles]);
 
-  // ✅ السماح فقط بالرول المسموح به
-  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
-    return (
-      <Navigate
-        to={`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`}
-        replace
-      />
-    );
-  }
+  if (!isAuthenticated || !user) return null;
+  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) return null;
 
   return children;
 };
 
-// ✅ Public Route (for login/register)
+// ✅ Public Route
 const PublicRoute = ({ children }: { children: JSX.Element }) => {
-  // ✅ لا دخول تلقائي حتى لو المستخدم مسجل من قبل
+  const { isAuthenticated, user } = useAuthStore();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      navigate(`/${user.center_subdomain}/dashboard/${user.role.toLowerCase()}`, { replace: true });
+    }
+  }, [isAuthenticated, user, navigate]);
+
+  if (isAuthenticated && user) return null;
   return children;
 };
 
-// ✅ Landing Page Wrapper (center-specific)
+// ✅ Landing Page Wrapper
 function CenterLanding() {
   const { centerSlug } = useParams<{ centerSlug?: string }>();
 
@@ -368,7 +375,6 @@ function CenterLanding() {
     }
   }, [centerSlug]);
 
-  // 👇 عرض صفحة اللاندينج العادية
   return <LandingPage />;
 }
 
@@ -378,12 +384,12 @@ function App() {
   const location = useLocation();
 
   useEffect(() => {
-    // 🚫 حذف بيانات الجلسة القديمة عند تحميل الموقع لتجنب الدخول التلقائي
+    // 🚫 حذف أي بيانات قديمة
     localStorage.removeItem("sb-biqzcfbcsflriybyvtur-auth-token");
     localStorage.removeItem("user");
     supabase.auth.signOut();
     logout();
-  }, [logout]);
+  }, []);
 
   useEffect(() => {
     initialize();
@@ -404,7 +410,7 @@ function App() {
         <Route path="/login" element={<Navigate to="/gammal/login" replace />} />
         <Route path="/register" element={<Navigate to="/gammal/register" replace />} />
 
-        {/* ✅ Landing Page for specific center */}
+        {/* ✅ Landing Page */}
         <Route path="/:centerSlug" element={<CenterLanding />} />
 
         {/* ✅ Auth Routes */}
