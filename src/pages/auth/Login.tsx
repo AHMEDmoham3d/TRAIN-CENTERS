@@ -181,7 +181,7 @@
 //     </div>
 //   );
 // };
-// import React, { useState, useEffect } from "react";
+// import React, { useState, useEffect } from "react";import { useNavigate, useParams } from "react-router-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -197,6 +197,24 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ التحقق من أن الجلسة لسه شغالة فعلاً فى Supabase
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        // المستخدم عنده جلسة نشطة، نوديه مباشرة لداشبورد حسب دوره
+        const storedUser = JSON.parse(localStorage.getItem("user") || "{}");
+        if (storedUser?.role && storedUser?.center_subdomain) {
+          navigate(
+            `/${storedUser.center_subdomain}/dashboard/${storedUser.role.toLowerCase()}`,
+            { replace: true }
+          );
+        }
+      }
+    };
+    checkSession();
+  }, [navigate]);
+
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
@@ -209,10 +227,11 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim(),
-      });
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
 
       if (signInError) {
         setErrorMsg("❌ Incorrect email or password.");
@@ -236,6 +255,7 @@ const Login: React.FC = () => {
           .select("id")
           .eq("subdomain", currentSlug)
           .maybeSingle();
+
         if (centerError) console.error("Center fetch error:", centerError);
         if (centerData) centerId = centerData.id;
       }
