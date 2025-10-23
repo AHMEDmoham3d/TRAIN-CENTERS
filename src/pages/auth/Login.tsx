@@ -197,11 +197,21 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ✅ حفظ الـ center slug في localStorage عند الدخول لأول مرة
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
     }
   }, [centerSlug]);
+
+  // ✅ عند التحميل الأول، نتأكد إن مفيش جلسة مستخدم محفوظة (علشان مايفتحش الداشبورد تلقائيًا)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        localStorage.removeItem("user");
+      }
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,6 +240,7 @@ const Login: React.FC = () => {
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
       let centerId: string | null = null;
 
+      // ✅ جلب ID السنتر بناء على slug
       if (currentSlug) {
         const { data: centerData, error: centerError } = await supabase
           .from("centers")
@@ -246,6 +257,7 @@ const Login: React.FC = () => {
         return;
       }
 
+      // ✅ جلب بيانات المستخدم من جدول users
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -265,6 +277,7 @@ const Login: React.FC = () => {
         return;
       }
 
+      // ✅ حفظ المستخدم في localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -277,9 +290,13 @@ const Login: React.FC = () => {
         })
       );
 
+      // ✅ تحديد المسار بناءً على الدور (role)
       const redirectPath = `/${currentSlug || "gammal"}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
+
+      // ✅ الانتقال الفوري + تحديث الصفحة لإظهار الداشبورد فورًا
       navigate(redirectPath, { replace: true });
+      window.location.href = redirectPath; // ← ده المفتاح لحل مشكلة الـ refresh
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("⚠️ Unexpected error. Please try again.");
