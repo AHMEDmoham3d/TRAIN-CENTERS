@@ -12,9 +12,10 @@ import LanguageSwitcher from '../ui/LanguageSwitcher';
 
 interface DashboardLayoutProps {
   children: ReactNode;
+  onNavAction?: (action: string) => void;
 }
 
-const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children, onNavAction }) => {
   const { t } = useTranslation();
   const { user, logout } = useAuthStore();
   const location = useLocation();
@@ -29,10 +30,11 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         label: t('navigation.dashboard'), 
         path: `/dashboard/${user?.role.toLowerCase()}` 
       },
-      { 
-        icon: <BookOpen size={20} />, 
-        label: t('navigation.courses'), 
-        path: '/courses' 
+      {
+        icon: <BookOpen size={20} />,
+        label: t('navigation.courses'),
+        path: '/courses',
+        action: user?.role === 'student' ? 'showVideos' : undefined
       },
       { 
         icon: <CalendarDays size={20} />, 
@@ -147,19 +149,35 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
               const isActive = location.pathname === item.path;
               return (
                 <li key={item.path}>
-                  <Link
-                    to={item.path}
-                    className={`flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${
-                      isActive
-                        ? 'bg-primary-50 text-primary-700'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <span className={isActive ? 'text-primary-500' : 'text-gray-500'}>
-                      {item.icon}
-                    </span>
-                    <span>{item.label}</span>
-                  </Link>
+                  {item.action ? (
+                    <button
+                      onClick={() => onNavAction && onNavAction(item.action)}
+                      className={`w-full flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${
+                        isActive
+                          ? 'bg-primary-50 text-primary-700'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className={isActive ? 'text-primary-500' : 'text-gray-500'}>
+                        {item.icon}
+                      </span>
+                      <span>{item.label}</span>
+                    </button>
+                  ) : (
+                    <Link
+                      to={item.path}
+                      className={`flex items-center space-x-3 px-3 py-2 rounded-md transition-colors ${
+                        isActive
+                          ? 'bg-primary-50 text-primary-700'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className={isActive ? 'text-primary-500' : 'text-gray-500'}>
+                        {item.icon}
+                      </span>
+                      <span>{item.label}</span>
+                    </Link>
+                  )}
                 </li>
               );
             })}

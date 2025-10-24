@@ -268,8 +268,14 @@ const StudentDashboard: React.FC = () => {
     );
   }
 
+  const handleNavAction = (action: string) => {
+    if (action === 'showVideos') {
+      setShowVideos(true);
+    }
+  };
+
   return (
-    <DashboardLayout>
+    <DashboardLayout onNavAction={handleNavAction}>
       <div className="space-y-6">
         {/* Welcome header */}
         <div className="bg-white rounded-lg shadow-card p-6">
@@ -415,8 +421,8 @@ const StudentDashboard: React.FC = () => {
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">{t('dashboard.progress')}</h2>
-            <a href="#" onClick={(e) => { e.preventDefault(); setShowVideos(true); }} className="text-sm text-primary-600 hover:text-primary-700 inline-flex items-center cursor-pointer">
-              View Courses (Videos)
+            <a href="#" className="text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
+              View detailed progress
               <ExternalLink className="ml-1 w-4 h-4" />
             </a>
           </div>
