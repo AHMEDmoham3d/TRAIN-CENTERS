@@ -198,21 +198,37 @@ const StudentDashboard: React.FC = () => {
           ]);
         }
 
-        // Fetch videos from teachers in the same center
-        const { data: videosData, error: videosError } = await supabase
-          .from('videos')
-          .select(`
-            *,
-            teachers!inner(
-              full_name,
-              center_id
-            )
-          `)
-          .eq('teachers.center_id', center.id);
+        // First, get teacher IDs from the same center
+        const { data: teachers, error: teachersError } = await supabase
+          .from('teachers')
+          .select('id')
+          .eq('center_id', center.id);
 
-        if (!videosError && videosData) {
-          setVideos(videosData);
+        if (teachersError) {
+          console.error('Error fetching teachers:', teachersError);
         }
+
+        let videosData: any[] = [];
+        if (teachers && teachers.length > 0) {
+          const teacherIds = teachers.map(t => t.id);
+
+          // Fetch videos from these teachers
+          const { data: videos, error: videosError } = await supabase
+            .from('videos')
+            .select(`
+              *,
+              teachers!inner(
+                full_name
+              )
+            `)
+            .in('teacher_id', teacherIds);
+
+          if (!videosError && videos) {
+            videosData = videos;
+          }
+        }
+
+        setVideos(videosData);
 
       } catch (error) {
         console.error('Error fetching student dashboard data:', error);
