@@ -53,6 +53,8 @@ const StudentDashboard: React.FC = () => {
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [recentAchievements, setRecentAchievements] = useState<RecentAchievement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showVideos, setShowVideos] = useState(false);
+  const [videos, setVideos] = useState<any[]>([]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -194,6 +196,22 @@ const StudentDashboard: React.FC = () => {
               date: '2 days ago',
             },
           ]);
+        }
+
+        // Fetch videos from teachers in the same center
+        const { data: videosData, error: videosError } = await supabase
+          .from('videos')
+          .select(`
+            *,
+            teachers!inner(
+              full_name,
+              center_id
+            )
+          `)
+          .eq('teachers.center_id', center.id);
+
+        if (!videosError && videosData) {
+          setVideos(videosData);
         }
 
       } catch (error) {
@@ -397,8 +415,8 @@ const StudentDashboard: React.FC = () => {
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-xl font-semibold text-gray-900">{t('dashboard.progress')}</h2>
-            <a href="#" className="text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View detailed progress
+            <a href="#" onClick={(e) => { e.preventDefault(); setShowVideos(true); }} className="text-sm text-primary-600 hover:text-primary-700 inline-flex items-center cursor-pointer">
+              View Courses (Videos)
               <ExternalLink className="ml-1 w-4 h-4" />
             </a>
           </div>
@@ -426,6 +444,59 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Videos Section */}
+        {showVideos && (
+          <div className="bg-white rounded-lg shadow-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Available Videos</h2>
+              <button
+                onClick={() => setShowVideos(false)}
+                className="text-sm text-gray-600 hover:text-gray-800"
+              >
+                Close
+              </button>
+            </div>
+
+            {videos.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {videos.map((video) => (
+                  <div key={video.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="aspect-video bg-gray-200 rounded-lg mb-3 flex items-center justify-center">
+                      <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h1.586a1 1 0 01.707.293l.707.707A1 1 0 0021 12.414V15m0 2h-1.586a1 1 0 01-.707-.293l-.707-.707A1 1 0 0017.586 16H15m-2 0H9a1 1 0 01-.707-.293l-.707-.707A1 1 0 017.586 15H6m0-2v-1.586a1 1 0 01.293-.707l.707-.707A1 1 0 018.414 12V9" />
+                      </svg>
+                    </div>
+                    <h3 className="font-semibold text-gray-900 mb-2">{video.title}</h3>
+                    <p className="text-sm text-gray-600 mb-3">{video.description}</p>
+                    <div className="flex items-center justify-between text-xs text-gray-500">
+                      <span>By: {video.teachers?.full_name || 'Teacher'}</span>
+                      <span>{new Date(video.uploaded_at).toLocaleDateString()}</span>
+                    </div>
+                    {video.video_url && (
+                      <a
+                        href={video.video_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center text-sm text-primary-600 hover:text-primary-700"
+                      >
+                        Watch Video
+                        <ExternalLink className="ml-1 w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <p>No videos available at the moment</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Performance Metrics */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-6">
@@ -436,7 +507,7 @@ const StudentDashboard: React.FC = () => {
               <option>Last 3 Months</option>
             </select>
           </div>
-          
+
           <div className="text-center py-8 text-gray-500">
             {/* Placeholder for Charts/Graphs that would be implemented with Chart.js */}
             <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
