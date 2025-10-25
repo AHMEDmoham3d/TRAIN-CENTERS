@@ -1,10 +1,17 @@
-import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { BookOpen, FileText, Calendar, Award, TrendingUp, ExternalLink } from 'lucide-react';
-import DashboardLayout from '../../components/layout/DashboardLayout';
-import { useAuthStore } from '../../store/authStore';
-import { supabase } from '@/lib/supabase';
-import toast from 'react-hot-toast';
+import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  BookOpen,
+  FileText,
+  Calendar,
+  Award,
+  TrendingUp,
+  ExternalLink,
+} from "lucide-react";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import { useAuthStore } from "../../store/authStore";
+import { supabase } from "@/lib/supabase";
+import toast from "react-hot-toast";
 
 interface UpcomingLesson {
   id: string;
@@ -43,196 +50,197 @@ interface RecentAchievement {
   date: string;
 }
 
+/** New types for subscription + teacher content */
+interface SubscriptionItem {
+  id: string;
+  student_id: string;
+  teacher_id: string;
+  start_date: string;
+  end_date: string;
+  is_active: boolean;
+  teacher?: {
+    id: string;
+    full_name: string;
+    email?: string;
+  } | null;
+  videos: any[]; // video rows
+  materials: any[]; // material rows
+  exams: any[]; // exam rows
+}
+
 const StudentDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
 
-  const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>([]);
-  const [pendingAssignments, setPendingAssignments] = useState<PendingAssignment[]>([]);
+  const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>(
+    []
+  );
+  const [pendingAssignments, setPendingAssignments] = useState<
+    PendingAssignment[]
+  >([]);
   const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
-  const [recentAchievements, setRecentAchievements] = useState<RecentAchievement[]>([]);
+  const [recentAchievements, setRecentAchievements] = useState<
+    RecentAchievement[]
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [showVideos, setShowVideos] = useState(false);
-  const [videos, setVideos] = useState<any[]>([]);
+
+  // subscriptions grouped by teacher + their content
+  const [subscriptionsData, setSubscriptionsData] = useState<
+    SubscriptionItem[]
+  >([]);
+  const [showVideosPanel, setShowVideosPanel] = useState(false);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
-      // Get center subdomain from user or localStorage
-      const centerSubdomain = user.center_subdomain || localStorage.getItem("center_subdomain");
-      if (!centerSubdomain) return;
+      // get center subdomain from user or localStorage
+      const centerSubdomain =
+        (user as any).center_subdomain || localStorage.getItem("center_subdomain");
 
       setLoading(true);
       try {
-        // First, get center_id from subdomain
-        const { data: center, error: centerError } = await supabase
-          .from('centers')
-          .select('id')
-          .ilike('subdomain', centerSubdomain)
-          .single();
-
-        if (centerError || !center) {
-          console.error('Center not found:', centerError);
-          return;
-        }
-
-        // Fetch student's subscriptions (active courses) filtered by center
-        const { data: subscriptions } = await supabase
-          .from('subscriptions')
-          .select('*, materials(*)')
-          .eq('student_id', user.id)
-          .eq('status', 'active');
-
-        // Fetch exam results for pending assignments filtered by center
-        const { data: examResults } = await supabase
-          .from('exam_results')
-          .select('*, exams(*)')
-          .eq('student_id', user.id)
-          .is('score', null); // Pending exams
-
-        // Fetch payments for achievements (completed payments) filtered by center
-        const { data: payments } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('student_id', user.id)
-          .eq('status', 'completed');
-
-        // Set upcoming lessons (mock for now, since no schedule table)
-        setUpcomingLessons([
-          {
-            id: '1',
-            title: 'Advanced Mathematics',
-            time: '10:00 AM - 11:30 AM',
-            teacher: 'Dr. Sarah Johnson',
-          },
-          {
-            id: '2',
-            title: 'Physics Fundamentals',
-            time: '1:00 PM - 2:30 PM',
-            teacher: 'Prof. Michael Chen',
-          },
-        ]);
-
-        // Set pending assignments from exam_results
-        if (examResults) {
-          setPendingAssignments(examResults.map(er => ({
-            id: er.id,
-            title: er.exams?.title || 'Exam',
-            dueDate: er.exams?.due_date ? new Date(er.exams.due_date).toLocaleDateString() : 'Soon',
-            course: er.exams?.material_id || 'Course',
-            status: 'urgent',
-          })));
-        } else {
-          setPendingAssignments([
-            {
-              id: '1',
-              title: 'Algebra Problem Set',
-              dueDate: 'Tomorrow',
-              course: 'Mathematics',
-              status: 'urgent',
-            },
-          ]);
-        }
-
-        // Set course progress from subscriptions
-        if (subscriptions) {
-          setCourseProgress(subscriptions.map(sub => ({
-            id: sub.id,
-            title: sub.materials?.title || 'Course',
-            progress: Math.floor(Math.random() * 100), // Mock progress
-            totalModules: 12,
-            completedModules: Math.floor(Math.random() * 12),
-          })));
-        } else {
-          setCourseProgress([
-            {
-              id: '1',
-              title: 'Mathematics',
-              progress: 75,
-              totalModules: 12,
-              completedModules: 9,
-            },
-          ]);
-        }
-
-        // Mock AI suggestions
-        setAiSuggestions([
-          {
-            id: '1',
-            title: 'Review Calculus Fundamentals',
-            reason: 'Based on your recent quiz performance',
-            icon: 'BookOpen',
-          },
-          {
-            id: '2',
-            title: 'Practice Physics Equations',
-            reason: 'You seem to struggle with kinematic problems',
-            icon: 'FileText',
-          },
-          {
-            id: '3',
-            title: 'Schedule a session with your Math tutor',
-            reason: 'To clarify integration techniques',
-            icon: 'Calendar',
-          },
-        ]);
-
-        // Set recent achievements from payments
-        if (payments && payments.length > 0) {
-          setRecentAchievements(payments.slice(0, 2).map(p => ({
-            id: p.id,
-            title: 'Payment Completed',
-            description: `Paid ${p.amount} for subscription`,
-            date: new Date(p.created_at).toLocaleDateString(),
-          })));
-        } else {
-          setRecentAchievements([
-            {
-              id: '1',
-              title: 'Perfect Score',
-              description: 'Achieved 100% on your English Literature quiz',
-              date: '2 days ago',
-            },
-          ]);
-        }
-
-        // First, get teacher IDs from the same center
-        const { data: teachers, error: teachersError } = await supabase
-          .from('teachers')
-          .select('id')
-          .eq('center_id', center.id);
-
-        if (teachersError) {
-          console.error('Error fetching teachers:', teachersError);
-        }
-
-        let videosData: any[] = [];
-        if (teachers && teachers.length > 0) {
-          const teacherIds = teachers.map(t => t.id);
-
-          // Fetch videos from these teachers
-          const { data: videos, error: videosError } = await supabase
-            .from('videos')
-            .select(`
-              *,
-              teachers!inner(
-                full_name
-              )
-            `)
-            .in('teacher_id', teacherIds);
-
-          if (!videosError && videos) {
-            videosData = videos;
+        // 1) find center id (optional - helps ensure we are scoping content to the center)
+        let centerId: string | null = null;
+        if (centerSubdomain) {
+          const centerRes = await supabase
+            .from("centers")
+            .select("id")
+            .ilike("subdomain", centerSubdomain)
+            .single();
+          if (!centerRes.error && centerRes.data) {
+            centerId = centerRes.data.id;
           }
         }
 
-        setVideos(videosData);
+        // 2) fetch subscriptions for this student (include active and expired so we can show status)
+        const { data: subs, error: subsError } = await supabase
+          .from("subscriptions")
+          .select("id, student_id, teacher_id, start_date, end_date, is_active")
+          .eq("student_id", user.id);
 
+        if (subsError) {
+          console.error("Error fetching subscriptions:", subsError);
+          toast.error("Failed to load subscriptions");
+          setSubscriptionsData([]);
+        } else if (!subs || subs.length === 0) {
+          setSubscriptionsData([]);
+        } else {
+          // For each subscription, fetch teacher info and the teacher's videos/materials/exams
+          const subsWithContent: SubscriptionItem[] = await Promise.all(
+            subs.map(async (s: any) => {
+              const subItem: SubscriptionItem = {
+                id: s.id,
+                student_id: s.student_id,
+                teacher_id: s.teacher_id,
+                start_date: s.start_date,
+                end_date: s.end_date,
+                is_active: s.is_active,
+                teacher: null,
+                videos: [],
+                materials: [],
+                exams: [],
+              };
+
+              // fetch teacher info (limit by center if you have centerId and want to verify)
+              const { data: teacherData, error: teacherError } = await supabase
+                .from("teachers")
+                .select("id, full_name, email, center_id")
+                .eq("id", s.teacher_id)
+                .maybeSingle();
+
+              if (!teacherError && teacherData) {
+                // optional: ensure teacher belongs to the same center (if center scoping required)
+                if (!centerId || teacherData.center_id === centerId) {
+                  subItem.teacher = {
+                    id: teacherData.id,
+                    full_name: teacherData.full_name,
+                    email: teacherData.email,
+                  };
+                } else {
+                  // teacher not in center — leave teacher null (won't show content)
+                  subItem.teacher = {
+                    id: teacherData.id,
+                    full_name: teacherData.full_name,
+                    email: teacherData.email,
+                  }; // still present but could be flagged
+                }
+              }
+
+              // fetch videos for this teacher
+              const { data: videosData, error: videosError } = await supabase
+                .from("videos")
+                .select("id, teacher_id, title, description, video_url, uploaded_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("uploaded_at", { ascending: false });
+
+              if (!videosError && videosData) {
+                subItem.videos = videosData;
+              } else {
+                subItem.videos = [];
+              }
+
+              // fetch materials for this teacher
+              const { data: materialsData, error: materialsError } = await supabase
+                .from("materials")
+                .select("id, teacher_id, title, description, file_url, uploaded_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("uploaded_at", { ascending: false });
+
+              if (!materialsError && materialsData) {
+                subItem.materials = materialsData;
+              } else {
+                subItem.materials = [];
+              }
+
+              // fetch exams created by this teacher
+              const { data: examsData, error: examsError } = await supabase
+                .from("exams")
+                .select("id, teacher_id, title, description, total_marks, created_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("created_at", { ascending: false });
+
+              if (!examsError && examsData) {
+                subItem.exams = examsData;
+              } else {
+                subItem.exams = [];
+              }
+
+              return subItem;
+            })
+          );
+
+          setSubscriptionsData(subsWithContent);
+        }
+
+        // --- The rest of the dashboard mocked content (kept simple) ---
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+        ]);
+
+        setPendingAssignments([]);
+        setCourseProgress([]);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+        setRecentAchievements([]);
       } catch (error) {
-        console.error('Error fetching student dashboard data:', error);
-        toast.error('Failed to load dashboard data');
+        console.error("Error fetching student dashboard data:", error);
+        toast.error("Failed to load dashboard data");
       } finally {
         setLoading(false);
       }
@@ -241,36 +249,22 @@ const StudentDashboard: React.FC = () => {
     fetchDashboardData();
   }, [user]);
 
-  // Helper for progress bar color
-  const getProgressColor = (progress: number) => {
-    if (progress < 50) return 'bg-warning-500';
-    if (progress < 75) return 'bg-secondary-500';
-    return 'bg-success-500';
+  // helper to compute subscription status
+  const computeSubscriptionStatus = (s: SubscriptionItem) => {
+    const now = new Date();
+    const end = s.end_date ? new Date(s.end_date) : null;
+    if (!s.is_active) return "inactive";
+    if (end && end < now) return "expired";
+    return "active";
   };
 
-  // Helper for assignment status
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'urgent':
-        return 'bg-error-100 text-error-800';
-      case 'upcoming':
-        return 'bg-warning-100 text-warning-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  // Helper for AI suggestion icon
-  const getSuggestionIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'BookOpen':
-        return <BookOpen className="w-5 h-5 text-primary-500" />;
-      case 'FileText':
-        return <FileText className="w-5 h-5 text-secondary-500" />;
-      case 'Calendar':
-        return <Calendar className="w-5 h-5 text-accent-500" />;
-      default:
-        return <TrendingUp className="w-5 h-5 text-primary-500" />;
+  // small presentational helpers
+  const formatDate = (d?: string) => {
+    if (!d) return "-";
+    try {
+      return new Date(d).toLocaleDateString();
+    } catch {
+      return d;
     }
   };
 
@@ -278,265 +272,174 @@ const StudentDashboard: React.FC = () => {
     return (
       <DashboardLayout>
         <div className="flex justify-center items-center h-64">
-          <p className="text-center p-8">جارِ التحميل...</p>
+          <p className="text-center p-8">Loading dashboard...</p>
         </div>
       </DashboardLayout>
     );
   }
 
-  const handleNavAction = (action: string) => {
-    if (action === 'showVideos') {
-      setShowVideos(true);
-    }
-  };
-
   return (
-    <DashboardLayout onNavAction={handleNavAction}>
+    <DashboardLayout
+      onNavAction={(action: string) => {
+        if (action === "showVideos") setShowVideosPanel(true);
+      }}
+    >
       <div className="space-y-6">
-        {/* Welcome header */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {t('dashboard.welcome', { name: user?.name || '' })}
+            {`Welcome, ${user?.name || ""}`}
           </h1>
           <p className="mt-1 text-gray-500">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            {new Date().toLocaleDateString()}
           </p>
         </div>
 
-        {/* Dashboard overview cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Today's lessons */}
-          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
-            <div className="flex items-center mb-4">
-              <BookOpen className="w-5 h-5 text-primary-500 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.todaysLessons')}</h2>
-            </div>
-            
-            {upcomingLessons.length > 0 ? (
-              <div className="space-y-3 flex-grow">
-                {upcomingLessons.map((lesson) => (
-                  <div key={lesson.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
-                    <p className="font-medium text-gray-900">{lesson.title}</p>
-                    <p className="text-sm text-gray-500">{lesson.time}</p>
-                    <p className="text-sm text-gray-500">{lesson.teacher}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 py-4 text-center">No lessons scheduled for today</p>
-            )}
-            
-            <a href="#" className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all classes
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </a>
+        {/* Subscriptions / Teachers area */}
+        <div className="bg-white rounded-lg shadow-card p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
+            <button
+              onClick={() => setShowVideosPanel(!showVideosPanel)}
+              className="text-sm text-primary-600 hover:text-primary-700"
+            >
+              {showVideosPanel ? "Hide Content" : "Show Content"}
+            </button>
           </div>
 
-          {/* Pending assignments */}
-          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
-            <div className="flex items-center mb-4">
-              <FileText className="w-5 h-5 text-secondary-500 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.pendingAssignments')}</h2>
+          {subscriptionsData.length === 0 ? (
+            <div className="text-gray-600">
+              You have no subscriptions yet. Please subscribe to a teacher to access their courses, videos and exams.
             </div>
-            
-            {pendingAssignments.length > 0 ? (
-              <div className="space-y-3 flex-grow">
-                {pendingAssignments.map((assignment) => (
-                  <div key={assignment.id} className="p-3 bg-gray-50 rounded-md border border-gray-100 flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-gray-900">{assignment.title}</p>
-                      <p className="text-sm text-gray-500">
-                        {assignment.course} • Due {assignment.dueDate}
-                      </p>
-                    </div>
-                    <span className={`inline-flex px-2 py-1 text-xs rounded-full ${getStatusBadgeClass(assignment.status)}`}>
-                      {assignment.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 py-4 text-center">No pending assignments</p>
-            )}
-            
-            <a href="#" className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all assignments
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </a>
-          </div>
-
-          {/* AI Recommendations */}
-          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
-            <div className="flex items-center mb-4">
-              <svg className="w-5 h-5 text-accent-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <h2 className="text-lg font-semibold text-gray-900">{t('ai.aiSuggestions')}</h2>
-            </div>
-            
-            {aiSuggestions.length > 0 ? (
-              <div className="space-y-3 flex-grow">
-                {aiSuggestions.map((suggestion) => (
-                  <div key={suggestion.id} className="p-3 bg-gray-50 rounded-md border border-gray-100 flex">
-                    <div className="mr-3 mt-1">
-                      {getSuggestionIcon(suggestion.icon)}
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">{suggestion.title}</p>
-                      <p className="text-sm text-gray-500">{suggestion.reason}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 py-4 text-center">No recommendations available</p>
-            )}
-            
-            <a href="#" className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              See more recommendations
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </a>
-          </div>
-
-          {/* Recent achievements */}
-          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
-            <div className="flex items-center mb-4">
-              <Award className="w-5 h-5 text-warning-500 mr-2" />
-              <h2 className="text-lg font-semibold text-gray-900">{t('dashboard.achievements')}</h2>
-            </div>
-            
-            {recentAchievements.length > 0 ? (
-              <div className="space-y-3 flex-grow">
-                {recentAchievements.map((achievement) => (
-                  <div key={achievement.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
-                    <div className="flex items-center">
-                      <span className="h-8 w-8 rounded-full bg-warning-100 flex items-center justify-center mr-3">
-                        <Award className="h-4 w-4 text-warning-600" />
-                      </span>
+          ) : (
+            <div className="space-y-4">
+              {subscriptionsData.map((sub) => {
+                const status = computeSubscriptionStatus(sub);
+                return (
+                  <div key={sub.id} className="border rounded-md p-4">
+                    <div className="flex justify-between items-start">
                       <div>
-                        <p className="font-medium text-gray-900">{achievement.title}</p>
-                        <p className="text-sm text-gray-500">{achievement.description}</p>
-                        <p className="text-xs text-gray-400 mt-1">{achievement.date}</p>
+                        <h3 className="text-lg font-semibold">
+                          {sub.teacher?.full_name || "Unknown Teacher"}
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                          Subscription: {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
+                        </p>
+                      </div>
+
+                      <div className="text-right">
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : status === "expired"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {status === "active" ? "Active" : status === "expired" ? "Expired" : "Inactive"}
+                        </span>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 py-4 text-center">No achievements yet</p>
-            )}
-            
-            <a href="#" className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all achievements
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </a>
-          </div>
-        </div>
 
-        {/* Course Progress Section */}
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">{t('dashboard.progress')}</h2>
-            <a href="#" className="text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View detailed progress
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </a>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {courseProgress.map((course) => (
-              <div key={course.id} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                <div className="flex justify-between items-center mb-2">
-                  <h3 className="font-medium text-gray-900">{course.title}</h3>
-                  <span className="text-gray-700 font-semibold">{course.progress}%</span>
-                </div>
-                
-                <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
-                  <div 
-                    className={`h-2.5 rounded-full ${getProgressColor(course.progress)}`} 
-                    style={{ width: `${course.progress}%` }}
-                  ></div>
-                </div>
-                
-                <p className="text-sm text-gray-500">
-                  Completed {course.completedModules} of {course.totalModules} modules
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
+                    {/* show content only when toggled on */}
+                    {showVideosPanel && (
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Videos */}
+                        <div>
+                          <h4 className="font-semibold mb-2">Videos</h4>
+                          {sub.videos && sub.videos.length > 0 ? (
+                            <div className="space-y-2">
+                              {sub.videos.map((v) => (
+                                <div key={v.id} className="p-2 bg-gray-50 rounded">
+                                  <div className="font-medium">{v.title}</div>
+                                  <div className="text-xs text-gray-500 mb-1">{new Date(v.uploaded_at).toLocaleDateString()}</div>
+                                  {v.video_url ? (
+                                    <a
+                                      href={v.video_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary-600 text-sm inline-flex items-center"
+                                    >
+                                      Watch video <ExternalLink className="ml-1 w-4 h-4" />
+                                    </a>
+                                  ) : (
+                                    <div className="text-sm text-gray-500">No video URL provided</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500">No videos added yet for this teacher.</div>
+                          )}
+                        </div>
 
-        {/* Videos Section */}
-        {showVideos && (
-          <div className="bg-white rounded-lg shadow-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900">Available Videos</h2>
-              <button
-                onClick={() => setShowVideos(false)}
-                className="text-sm text-gray-600 hover:text-gray-800"
-              >
-                Close
-              </button>
-            </div>
+                        {/* Materials */}
+                        <div>
+                          <h4 className="font-semibold mb-2">Materials & Files</h4>
+                          {sub.materials && sub.materials.length > 0 ? (
+                            <div className="space-y-2">
+                              {sub.materials.map((m) => (
+                                <div key={m.id} className="p-2 bg-gray-50 rounded">
+                                  <div className="font-medium">{m.title}</div>
+                                  <div className="text-xs text-gray-500 mb-1">{new Date(m.uploaded_at).toLocaleDateString()}</div>
+                                  {m.file_url ? (
+                                    <a
+                                      href={m.file_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary-600 text-sm inline-flex items-center"
+                                    >
+                                      Open file <ExternalLink className="ml-1 w-4 h-4" />
+                                    </a>
+                                  ) : (
+                                    <div className="text-sm text-gray-500">No file provided</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500">No materials added yet for this teacher.</div>
+                          )}
+                        </div>
 
-            {videos.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {videos.map((video) => (
-                  <div key={video.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="aspect-video bg-gray-200 rounded-lg mb-3 flex items-center justify-center">
-                      <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l.707.707A1 1 0 0012.414 11H15m2 0h1.586a1 1 0 01.707.293l.707.707A1 1 0 0021 12.414V15m0 2h-1.586a1 1 0 01-.707-.293l-.707-.707A1 1 0 0017.586 16H15m-2 0H9a1 1 0 01-.707-.293l-.707-.707A1 1 0 017.586 15H6m0-2v-1.586a1 1 0 01.293-.707l.707-.707A1 1 0 018.414 12V9" />
-                      </svg>
-                    </div>
-                    <h3 className="font-semibold text-gray-900 mb-2">{video.title}</h3>
-                    <p className="text-sm text-gray-600 mb-3">{video.description}</p>
-                    <div className="flex items-center justify-between text-xs text-gray-500">
-                      <span>By: {video.teachers?.full_name || 'Teacher'}</span>
-                      <span>{new Date(video.uploaded_at).toLocaleDateString()}</span>
-                    </div>
-                    {video.video_url && (
-                      <a
-                        href={video.video_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 inline-flex items-center text-sm text-primary-600 hover:text-primary-700"
-                      >
-                        Watch Video
-                        <ExternalLink className="ml-1 w-4 h-4" />
-                      </a>
+                        {/* Exams */}
+                        <div>
+                          <h4 className="font-semibold mb-2">Exams</h4>
+                          {sub.exams && sub.exams.length > 0 ? (
+                            <div className="space-y-2">
+                              {sub.exams.map((ex) => (
+                                <div key={ex.id} className="p-2 bg-gray-50 rounded">
+                                  <div className="font-medium">{ex.title}</div>
+                                  <div className="text-xs text-gray-500 mb-1">{ex.description || "No description"}</div>
+                                  <div className="text-xs text-gray-500">Total marks: {ex.total_marks ?? "-"}</div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-sm text-gray-500">No exams added yet for this teacher.</div>
+                          )}
+                        </div>
+                      </div>
                     )}
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                <p>No videos available at the moment</p>
-              </div>
-            )}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-        {/* Performance Metrics */}
+        {/* Keep other dashboard sections (progress, AI suggestions...) */}
         <div className="bg-white rounded-lg shadow-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-gray-900">{t('dashboard.performanceMetrics')}</h2>
-            <select className="border border-gray-300 rounded-md text-sm p-1">
-              <option>This Month</option>
-              <option>Last Month</option>
-              <option>Last 3 Months</option>
-            </select>
+          <h2 className="text-xl font-semibold">Progress</h2>
+          <div className="text-sm text-gray-500 mt-2">
+            Your course progress and metrics will appear here.
           </div>
+        </div>
 
-          <div className="text-center py-8 text-gray-500">
-            {/* Placeholder for Charts/Graphs that would be implemented with Chart.js */}
-            <svg className="w-12 h-12 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <p>Performance metrics visualization would appear here</p>
-            <p className="text-sm">This would include attendance, grades, participation, etc.</p>
+        <div className="bg-white rounded-lg shadow-card p-6">
+          <h2 className="text-xl font-semibold">AI Suggestions</h2>
+          <div className="text-sm text-gray-500 mt-2">
+            Personalized suggestions will appear here.
           </div>
         </div>
       </div>
