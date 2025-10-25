@@ -50,22 +50,43 @@ interface RecentAchievement {
   date: string;
 }
 
-/** New types for subscription + teacher content */
+/** Subscription + teacher content types */
 interface SubscriptionItem {
   id: string;
   student_id: string;
   teacher_id: string;
-  start_date: string;
-  end_date: string;
+  start_date: string | null;
+  end_date: string | null;
   is_active: boolean;
   teacher?: {
     id: string;
     full_name: string;
-    email?: string;
+    email?: string | null;
   } | null;
-  videos: any[]; // video rows
-  materials: any[]; // material rows
-  exams: any[]; // exam rows
+  videos: Array<{
+    id: string;
+    teacher_id: string;
+    title: string;
+    description?: string | null;
+    video_url?: string | null;
+    uploaded_at?: string | null;
+  }>;
+  materials: Array<{
+    id: string;
+    teacher_id: string;
+    title: string;
+    description?: string | null;
+    file_url?: string | null;
+    uploaded_at?: string | null;
+  }>;
+  exams: Array<{
+    id: string;
+    teacher_id: string;
+    title: string;
+    description?: string | null;
+    total_marks?: number | null;
+    created_at?: string | null;
+  }>;
 }
 
 const StudentDashboard: React.FC = () => {
@@ -98,13 +119,13 @@ const StudentDashboard: React.FC = () => {
         return;
       }
 
-      // get center subdomain from user or localStorage
+      // get center subdomain from user or localStorage (used for scoping if needed)
       const centerSubdomain =
         (user as any).center_subdomain || localStorage.getItem("center_subdomain");
 
       setLoading(true);
       try {
-        // 1) find center id (optional - helps ensure we are scoping content to the center)
+        // 1) optionally resolve center id (if you want to scope teachers to the center)
         let centerId: string | null = null;
         if (centerSubdomain) {
           const centerRes = await supabase
@@ -117,7 +138,7 @@ const StudentDashboard: React.FC = () => {
           }
         }
 
-        // 2) fetch subscriptions for this student (include active and expired so we can show status)
+        // 2) fetch subscriptions for this student (we fetch all subscriptions and later compute active/expired)
         const { data: subs, error: subsError } = await supabase
           .from("subscriptions")
           .select("id, student_id, teacher_id, start_date, end_date, is_active")
@@ -146,7 +167,7 @@ const StudentDashboard: React.FC = () => {
                 exams: [],
               };
 
-              // fetch teacher info (limit by center if you have centerId and want to verify)
+              // fetch teacher info (limit by center if centerId is available)
               const { data: teacherData, error: teacherError } = await supabase
                 .from("teachers")
                 .select("id, full_name, email, center_id")
@@ -154,7 +175,7 @@ const StudentDashboard: React.FC = () => {
                 .maybeSingle();
 
               if (!teacherError && teacherData) {
-                // optional: ensure teacher belongs to the same center (if center scoping required)
+                // optional: ensure teacher belongs to the same center if you require scoping
                 if (!centerId || teacherData.center_id === centerId) {
                   subItem.teacher = {
                     id: teacherData.id,
@@ -162,12 +183,12 @@ const StudentDashboard: React.FC = () => {
                     email: teacherData.email,
                   };
                 } else {
-                  // teacher not in center — leave teacher null (won't show content)
+                  // teacher belongs to different center — still attach (you can hide if needed)
                   subItem.teacher = {
                     id: teacherData.id,
                     full_name: teacherData.full_name,
                     email: teacherData.email,
-                  }; // still present but could be flagged
+                  };
                 }
               }
 
@@ -217,7 +238,9 @@ const StudentDashboard: React.FC = () => {
           setSubscriptionsData(subsWithContent);
         }
 
-        // --- The rest of the dashboard mocked content (kept simple) ---
+        // --- Keep other dashboard content (mocked or lightweight) to preserve original layout ---
+
+        // upcoming lessons: kept as sample/mock until you add a schedule table
         setUpcomingLessons([
           {
             id: "1",
@@ -225,10 +248,51 @@ const StudentDashboard: React.FC = () => {
             time: "10:00 AM - 11:30 AM",
             teacher: "Dr. Sarah Johnson",
           },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
         ]);
 
-        setPendingAssignments([]);
-        setCourseProgress([]);
+        // pending assignments: derive from exam_results (mock fallback)
+        const { data: examResults } = await supabase
+          .from("exam_results")
+          .select("id, exam_id, submitted_at, score, exams(title, description)")
+          .eq("student_id", user.id)
+          .is("score", null);
+
+        if (examResults) {
+          setPendingAssignments(
+            examResults.map((er: any) => ({
+              id: er.id,
+              title: er.exams?.title || "Exam",
+              dueDate: "Soon",
+              course: er.exams?.title || "Course",
+              status: "urgent",
+            }))
+          );
+        } else {
+          setPendingAssignments([]);
+        }
+
+        // course progress: build from subscriptions (simple mock percentages)
+        if (Array.isArray(subs) && subs.length > 0) {
+          setCourseProgress(
+            subs.map((s: any, idx: number) => ({
+              id: s.id,
+              title: `Course ${idx + 1}`,
+              progress: Math.floor(Math.random() * 100),
+              totalModules: 12,
+              completedModules: Math.floor(Math.random() * 12),
+            }))
+          );
+        } else {
+          setCourseProgress([]);
+        }
+
+        // ai suggestions & achievements (mocked)
         setAiSuggestions([
           {
             id: "1",
@@ -237,7 +301,25 @@ const StudentDashboard: React.FC = () => {
             icon: "BookOpen",
           },
         ]);
-        setRecentAchievements([]);
+
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("*")
+          .eq("student_id", user.id)
+          .eq("status", "confirmed");
+
+        if (payments && payments.length > 0) {
+          setRecentAchievements(
+            payments.slice(0, 2).map((p: any) => ({
+              id: p.id,
+              title: "Subscription Payment",
+              description: `Paid ${p.amount}`,
+              date: new Date(p.payment_date).toLocaleDateString(),
+            }))
+          );
+        } else {
+          setRecentAchievements([]);
+        }
       } catch (error) {
         console.error("Error fetching student dashboard data:", error);
         toast.error("Failed to load dashboard data");
@@ -249,7 +331,7 @@ const StudentDashboard: React.FC = () => {
     fetchDashboardData();
   }, [user]);
 
-  // helper to compute subscription status
+  // compute subscription status (active / expired / inactive)
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
     const end = s.end_date ? new Date(s.end_date) : null;
@@ -258,8 +340,7 @@ const StudentDashboard: React.FC = () => {
     return "active";
   };
 
-  // small presentational helpers
-  const formatDate = (d?: string) => {
+  const formatDate = (d?: string | null) => {
     if (!d) return "-";
     try {
       return new Date(d).toLocaleDateString();
@@ -285,16 +366,137 @@ const StudentDashboard: React.FC = () => {
       }}
     >
       <div className="space-y-6">
+        {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
             {`Welcome, ${user?.name || ""}`}
           </h1>
-          <p className="mt-1 text-gray-500">
-            {new Date().toLocaleDateString()}
-          </p>
+          <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
         </div>
 
-        {/* Subscriptions / Teachers area */}
+        {/* Overview cards (kept old layout structure) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Today's lessons */}
+          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
+            <div className="flex items-center mb-4">
+              <BookOpen className="w-5 h-5 text-primary-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">Today's Lessons</h2>
+            </div>
+
+            {upcomingLessons.length > 0 ? (
+              <div className="space-y-3 flex-grow">
+                {upcomingLessons.map((lesson) => (
+                  <div key={lesson.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                    <p className="font-medium text-gray-900">{lesson.title}</p>
+                    <p className="text-sm text-gray-500">{lesson.time}</p>
+                    <p className="text-sm text-gray-500">{lesson.teacher}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 py-4 text-center">No lessons scheduled for today</p>
+            )}
+
+            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
+              View all classes
+              <ExternalLink className="ml-1 w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Pending assignments */}
+          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
+            <div className="flex items-center mb-4">
+              <FileText className="w-5 h-5 text-secondary-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">Pending Assignments</h2>
+            </div>
+
+            {pendingAssignments.length > 0 ? (
+              <div className="space-y-3 flex-grow">
+                {pendingAssignments.map((assignment) => (
+                  <div key={assignment.id} className="p-3 bg-gray-50 rounded-md border border-gray-100 flex justify-between items-start">
+                    <div>
+                      <p className="font-medium text-gray-900">{assignment.title}</p>
+                      <p className="text-sm text-gray-500">{assignment.course} • Due {assignment.dueDate}</p>
+                    </div>
+                    <span className="inline-flex px-2 py-1 text-xs rounded-full bg-error-100 text-error-800">{assignment.status}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 py-4 text-center">No pending assignments</p>
+            )}
+
+            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
+              View all assignments
+              <ExternalLink className="ml-1 w-4 h-4" />
+            </button>
+          </div>
+
+          {/* AI Suggestions */}
+          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
+            <div className="flex items-center mb-4">
+              <Calendar className="w-5 h-5 text-accent-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">AI Study Suggestions</h2>
+            </div>
+
+            {aiSuggestions.length > 0 ? (
+              <div className="space-y-3 flex-grow">
+                {aiSuggestions.map((sug) => (
+                  <div key={sug.id} className="p-3 bg-gray-50 rounded-md border border-gray-100 flex">
+                    <div className="mr-3 mt-1">{sug.icon === "BookOpen" ? <BookOpen className="w-5 h-5 text-primary-500" /> : <TrendingUp className="w-5 h-5 text-primary-500" />}</div>
+                    <div>
+                      <p className="font-medium text-gray-900">{sug.title}</p>
+                      <p className="text-sm text-gray-500">{sug.reason}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 py-4 text-center">No suggestions available</p>
+            )}
+
+            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
+              See more recommendations
+              <ExternalLink className="ml-1 w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Achievements */}
+          <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
+            <div className="flex items-center mb-4">
+              <Award className="w-5 h-5 text-warning-500 mr-2" />
+              <h2 className="text-lg font-semibold text-gray-900">Achievements</h2>
+            </div>
+
+            {recentAchievements.length > 0 ? (
+              <div className="space-y-3 flex-grow">
+                {recentAchievements.map((ach) => (
+                  <div key={ach.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                    <div className="flex items-center">
+                      <div className="mr-3">
+                        <Award className="h-5 w-5 text-warning-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-gray-900">{ach.title}</p>
+                        <p className="text-sm text-gray-500">{ach.description}</p>
+                        <p className="text-xs text-gray-400 mt-1">{ach.date}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-500 py-4 text-center">No achievements yet</p>
+            )}
+
+            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
+              View all achievements
+              <ExternalLink className="ml-1 w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Subscriptions section (Teachers + their content) */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -341,7 +543,7 @@ const StudentDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* show content only when toggled on */}
+                    {/* show content only when toggled */}
                     {showVideosPanel && (
                       <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
                         {/* Videos */}
@@ -352,7 +554,7 @@ const StudentDashboard: React.FC = () => {
                               {sub.videos.map((v) => (
                                 <div key={v.id} className="p-2 bg-gray-50 rounded">
                                   <div className="font-medium">{v.title}</div>
-                                  <div className="text-xs text-gray-500 mb-1">{new Date(v.uploaded_at).toLocaleDateString()}</div>
+                                  <div className="text-xs text-gray-500 mb-1">{v.uploaded_at ? new Date(v.uploaded_at).toLocaleDateString() : "-"}</div>
                                   {v.video_url ? (
                                     <a
                                       href={v.video_url}
@@ -381,7 +583,7 @@ const StudentDashboard: React.FC = () => {
                               {sub.materials.map((m) => (
                                 <div key={m.id} className="p-2 bg-gray-50 rounded">
                                   <div className="font-medium">{m.title}</div>
-                                  <div className="text-xs text-gray-500 mb-1">{new Date(m.uploaded_at).toLocaleDateString()}</div>
+                                  <div className="text-xs text-gray-500 mb-1">{m.uploaded_at ? new Date(m.uploaded_at).toLocaleDateString() : "-"}</div>
                                   {m.file_url ? (
                                     <a
                                       href={m.file_url}
@@ -428,7 +630,7 @@ const StudentDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Keep other dashboard sections (progress, AI suggestions...) */}
+        {/* Progress / AI / other sections preserved as earlier */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
           <div className="text-sm text-gray-500 mt-2">
