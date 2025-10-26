@@ -111,6 +111,7 @@ const StudentDashboard: React.FC = () => {
     SubscriptionItem[]
   >([]);
   const [showVideosPanel, setShowVideosPanel] = useState(false);
+  const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -120,18 +121,23 @@ const StudentDashboard: React.FC = () => {
       }
 
       // get center subdomain from user or localStorage (used for scoping if needed)
-      const centerSubdomain =
+      const currentCenterSubdomain =
         (user as any).center_subdomain || localStorage.getItem("center_subdomain");
+
+      setCenterSubdomain(currentCenterSubdomain);
+
+      console.log("🔍 Center subdomain:", currentCenterSubdomain);
+      console.log("🔍 User data:", user);
 
       setLoading(true);
       try {
         // 1) optionally resolve center id (if you want to scope teachers to the center)
         let centerId: string | null = null;
-        if (centerSubdomain) {
+        if (currentCenterSubdomain) {
           const centerRes = await supabase
             .from("centers")
             .select("id")
-            .ilike("subdomain", centerSubdomain)
+            .ilike("subdomain", currentCenterSubdomain)
             .single();
           if (!centerRes.error && centerRes.data) {
             centerId = centerRes.data.id;
@@ -204,12 +210,17 @@ const StudentDashboard: React.FC = () => {
                 }
               }
 
+              console.log("🔍 Teacher data for subscription:", s.teacher_id, teacherData);
+              console.log("🔍 Center ID:", centerId, "Teacher center_id:", teacherData?.center_id);
+
               // fetch videos for this teacher
               const { data: videosData, error: videosError } = await supabase
                 .from("videos")
                 .select("id, teacher_id, title, description, video_url, uploaded_at")
                 .eq("teacher_id", s.teacher_id)
                 .order("uploaded_at", { ascending: false });
+
+              console.log("🔍 Videos for teacher", s.teacher_id, ":", videosData, videosError);
 
               if (!videosError && videosData) {
                 subItem.videos = videosData;
@@ -247,6 +258,7 @@ const StudentDashboard: React.FC = () => {
             })
           );
 
+          console.log("🔍 Final subscriptions data:", subsWithContent);
           setSubscriptionsData(subsWithContent);
         }
 
@@ -384,6 +396,7 @@ const StudentDashboard: React.FC = () => {
             {`Welcome, ${user?.name || ""}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
+          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Unknown"}</p>
         </div>
 
         {/* Overview cards (kept old layout structure) */}
