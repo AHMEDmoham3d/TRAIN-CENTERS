@@ -201,6 +201,9 @@ const Login: React.FC = () => {
   useEffect(() => {
     if (centerSlug) {
       localStorage.setItem("center_subdomain", centerSlug.trim());
+      console.log("✅ Saved center_subdomain:", centerSlug.trim());
+    } else {
+      console.warn("⚠️ centerSlug is undefined from URL");
     }
   }, [centerSlug]);
 
@@ -219,12 +222,14 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
+      // 🔹 تسجيل الدخول عبر Supabase Auth
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password.trim(),
       });
 
       if (signInError) {
+        console.error("Sign-in error:", signInError);
         setErrorMsg("❌ Incorrect email or password.");
         setLoading(false);
         return;
@@ -237,27 +242,39 @@ const Login: React.FC = () => {
         return;
       }
 
+      // 🔹 الحصول على الـ subdomain (من URL أو localStorage)
       const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
-      let centerId: string | null = null;
-
-      // ✅ جلب ID السنتر بناء على slug
-      if (currentSlug) {
-        const { data: centerData, error: centerError } = await supabase
-          .from("centers")
-          .select("id")
-          .eq("subdomain", currentSlug)
-          .maybeSingle();
-        if (centerError) console.error("Center fetch error:", centerError);
-        if (centerData) centerId = centerData.id;
+      if (!currentSlug) {
+        setErrorMsg("⚠️ Unable to detect learning center.");
+        setLoading(false);
+        return;
       }
 
-      if (!centerId) {
+      console.log("🏫 Current Center Slug:", currentSlug);
+
+      // 🔹 جلب ID السنتر بناء على subdomain
+      const { data: centerData, error: centerError } = await supabase
+        .from("centers")
+        .select("id")
+        .eq("subdomain", currentSlug)
+        .maybeSingle();
+
+      if (centerError) {
+        console.error("Center fetch error:", centerError);
+        setErrorMsg("❌ Error fetching center data.");
+        setLoading(false);
+        return;
+      }
+
+      if (!centerData) {
         setErrorMsg("❌ Center not found.");
         setLoading(false);
         return;
       }
 
-      // ✅ جلب بيانات المستخدم من جدول users
+      const centerId = centerData.id;
+
+      // 🔹 جلب بيانات المستخدم من جدول users
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("*")
@@ -266,6 +283,7 @@ const Login: React.FC = () => {
         .maybeSingle();
 
       if (userError) {
+        console.error("User fetch error:", userError);
         setErrorMsg("⚠️ Error fetching user data.");
         setLoading(false);
         return;
@@ -277,7 +295,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ حفظ المستخدم في localStorage
+      // 🔹 حفظ بيانات المستخدم في localStorage
       localStorage.setItem(
         "user",
         JSON.stringify({
@@ -286,17 +304,17 @@ const Login: React.FC = () => {
           email: user.email,
           role: userData.role,
           phone: userData.phone,
-          center_subdomain: currentSlug || "gammal",
+          center_subdomain: currentSlug,
         })
       );
 
-      // ✅ تحديد المسار بناءً على الدور (role)
-      const redirectPath = `/${currentSlug || "gammal"}/dashboard/${userData.role.toLowerCase()}`;
+      // 🔹 تحديد المسار بناءً على الدور (role)
+      const redirectPath = `/${currentSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // ✅ الانتقال الفوري + تحديث الصفحة لإظهار الداشبورد فورًا
+      // 🔹 الانتقال الفوري + إعادة تحميل الصفحة لضمان تحميل البيانات
       navigate(redirectPath, { replace: true });
-      window.location.href = redirectPath; // ← ده المفتاح لحل مشكلة الـ refresh
+      window.location.href = redirectPath;
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("⚠️ Unexpected error. Please try again.");
