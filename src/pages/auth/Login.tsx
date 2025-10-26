@@ -197,13 +197,23 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ حفظ الـ center slug في localStorage عند الدخول لأول مرة
+  // ✅ حفظ الـ center_slug بمجرد دخول المستخدم على صفحة اللوجين
   useEffect(() => {
-    if (centerSlug) {
-      localStorage.setItem("center_subdomain", centerSlug.trim());
-      console.log("✅ Saved center_subdomain:", centerSlug.trim());
+    let slugFromURL = centerSlug?.trim();
+
+    // لو مش موجود، نحاول ناخده من pathname
+    if (!slugFromURL) {
+      const pathPart = window.location.pathname.split("/")[1];
+      if (pathPart && pathPart.length > 0 && pathPart !== "login") {
+        slugFromURL = pathPart;
+      }
+    }
+
+    if (slugFromURL) {
+      localStorage.setItem("center_subdomain", slugFromURL);
+      console.log("✅ Saved center_subdomain:", slugFromURL);
     } else {
-      console.warn("⚠️ centerSlug is undefined from URL");
+      console.warn("⚠️ No centerSlug found in URL or pathname");
     }
   }, [centerSlug]);
 
@@ -242,15 +252,21 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🔹 الحصول على الـ subdomain (من URL أو localStorage)
-      const currentSlug = centerSlug || localStorage.getItem("center_subdomain");
-      if (!currentSlug) {
+      // ✅ الحصول على subdomain من localStorage كأولوية قصوى
+      let currentSlug =
+        centerSlug?.trim() ||
+        localStorage.getItem("center_subdomain") ||
+        window.location.pathname.split("/")[1];
+
+      if (!currentSlug || currentSlug === "undefined" || currentSlug === "") {
         setErrorMsg("⚠️ Unable to detect learning center.");
         setLoading(false);
+        console.error("❌ centerSlug not found anywhere");
         return;
       }
 
       console.log("🏫 Current Center Slug:", currentSlug);
+      localStorage.setItem("center_subdomain", currentSlug); // إعادة حفظها للتأكيد
 
       // 🔹 جلب ID السنتر بناء على subdomain
       const { data: centerData, error: centerError } = await supabase
@@ -312,9 +328,8 @@ const Login: React.FC = () => {
       const redirectPath = `/${currentSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // 🔹 الانتقال الفوري + إعادة تحميل الصفحة لضمان تحميل البيانات
+      // ✅ نستخدم navigate فقط بدون window.location.href لتفادي تعارض إعادة التحميل
       navigate(redirectPath, { replace: true });
-      window.location.href = redirectPath;
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("⚠️ Unexpected error. Please try again.");
