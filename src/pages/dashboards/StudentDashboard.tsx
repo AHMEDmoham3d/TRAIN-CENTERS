@@ -151,9 +151,21 @@ const StudentDashboard: React.FC = () => {
         } else if (!subs || subs.length === 0) {
           setSubscriptionsData([]);
         } else {
-          // For each subscription, fetch teacher info and the teacher's videos/materials/exams
+          // ✅ فلترة الاشتراكات لتشمل فقط النشطة (اللي مازالت سارية)
+          const activeSubs = subs.filter(
+            (s: any) => s.is_active && new Date(s.end_date) > new Date()
+          );
+
+          // ✅ لو مفيش اشتراكات نشطة، يظهر نفس الرسالة
+          if (activeSubs.length === 0) {
+            setSubscriptionsData([]);
+            setLoading(false);
+            return;
+          }
+
+          // ✅ جلب بيانات المحتوى فقط للاشتراكات النشطة
           const subsWithContent: SubscriptionItem[] = await Promise.all(
-            subs.map(async (s: any) => {
+            activeSubs.map(async (s: any) => {
               const subItem: SubscriptionItem = {
                 id: s.id,
                 student_id: s.student_id,
