@@ -258,44 +258,21 @@ const Login: React.FC = () => {
         localStorage.getItem("center_subdomain") ||
         window.location.pathname.split("/")[1];
 
-      if (!currentSlug || currentSlug === "undefined" || currentSlug === "") {
-        setErrorMsg("⚠️ Unable to detect learning center.");
-        setLoading(false);
-        console.error("❌ centerSlug not found anywhere");
-        return;
-      }
+      console.log("🏫 Center slug before fetch:", currentSlug);
 
-      console.log("🏫 Current Center Slug:", currentSlug);
-      localStorage.setItem("center_subdomain", currentSlug); // إعادة حفظها للتأكيد
-
-      // 🔹 جلب ID السنتر بناء على subdomain
-      const { data: centerData, error: centerError } = await supabase
-        .from("centers")
-        .select("id")
-        .eq("subdomain", currentSlug)
-        .maybeSingle();
-
-      if (centerError) {
-        console.error("Center fetch error:", centerError);
-        setErrorMsg("❌ Error fetching center data.");
-        setLoading(false);
-        return;
-      }
-
-      if (!centerData) {
-        setErrorMsg("❌ Center not found.");
-        setLoading(false);
-        return;
-      }
-
-      const centerId = centerData.id;
-
-      // 🔹 جلب بيانات المستخدم من جدول users
+      // 🔹 جلب بيانات المستخدم + subdomain الخاص بالسنتر المرتبط به
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("*")
+        .select(`
+          id,
+          full_name,
+          email,
+          role,
+          phone,
+          center_id,
+          centers ( subdomain )
+        `)
         .eq("id", user.id)
-        .eq("center_id", centerId)
         .maybeSingle();
 
       if (userError) {
@@ -306,28 +283,40 @@ const Login: React.FC = () => {
       }
 
       if (!userData) {
-        setErrorMsg("❌ This account is not registered in this center.");
+        setErrorMsg("❌ This account is not registered in any center.");
         setLoading(false);
         return;
       }
 
-      // 🔹 حفظ بيانات المستخدم في localStorage
+      // ✅ جلب الـ subdomain من العلاقة
+      const centerSlugFromDB = userData.centers?.subdomain;
+
+      if (!centerSlugFromDB) {
+        console.error("❌ Center subdomain not found for this user.");
+        setErrorMsg("⚠️ Center information missing.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("✅ Center subdomain:", centerSlugFromDB);
+
+      // ✅ حفظ بيانات المستخدم في localStorage
       const updatedUser = {
-        id: user.id,
+        id: userData.id,
         name: userData.full_name,
-        email: user.email,
+        email: userData.email,
         role: userData.role,
         phone: userData.phone,
-        center_subdomain: currentSlug,
+        center_subdomain: centerSlugFromDB,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       console.log("🔍 User data saved:", updatedUser);
 
-      // 🔹 تحديد المسار بناءً على الدور (role)
-      const redirectPath = `/${currentSlug}/dashboard/${userData.role.toLowerCase()}`;
+      // ✅ تحديد المسار بناءً على الدور (role)
+      const redirectPath = `/${centerSlugFromDB}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // ✅ استخدام window.location.replace بدل navigate فقط (عشان يحمّل الداشبورد صح)
+      // ✅ التوجيه الصحيح
       window.location.replace(redirectPath);
     } catch (err) {
       console.error("Login error:", err);
