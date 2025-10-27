@@ -312,17 +312,16 @@ const Login: React.FC = () => {
       }
 
       // 🔹 حفظ بيانات المستخدم في localStorage
-      localStorage.setItem(
-        "user",
-        JSON.stringify({
-          id: user.id,
-          name: userData.full_name,
-          email: user.email,
-          role: userData.role,
-          phone: userData.phone,
-          center_subdomain: currentSlug,
-        })
-      );
+      const updatedUser = {
+        id: user.id,
+        name: userData.full_name,
+        email: user.email,
+        role: userData.role,
+        phone: userData.phone,
+        center_subdomain: currentSlug,
+      };
+      localStorage.setItem("user", JSON.stringify(updatedUser));
+      console.log("🔍 User data saved:", updatedUser);
 
       // 🔹 تحديد المسار بناءً على الدور (role)
       const redirectPath = `/${currentSlug}/dashboard/${userData.role.toLowerCase()}`;
