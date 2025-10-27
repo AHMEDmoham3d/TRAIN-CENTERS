@@ -328,8 +328,8 @@ const Login: React.FC = () => {
       const redirectPath = `/${currentSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // ✅ نستخدم navigate فقط بدون window.location.href لتفادي تعارض إعادة التحميل
-      navigate(redirectPath, { replace: true });
+      // ✅ استخدام window.location.replace بدل navigate فقط (عشان يحمّل الداشبورد صح)
+      window.location.replace(redirectPath);
     } catch (err) {
       console.error("Login error:", err);
       setErrorMsg("⚠️ Unexpected error. Please try again.");
