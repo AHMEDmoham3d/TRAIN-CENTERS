@@ -217,7 +217,7 @@ const Login: React.FC = () => {
     }
   }, [centerSlug]);
 
-  // ✅ عند التحميل الأول، نتأكد إن مفيش جلسة مستخدم محفوظة (علشان مايفتحش الداشبورد تلقائيًا)
+  // ✅ عند التحميل الأول، نتأكد إن مفيش جلسة مستخدم محفوظة
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
@@ -233,10 +233,11 @@ const Login: React.FC = () => {
 
     try {
       // 🔹 تسجيل الدخول عبر Supabase Auth
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim(),
-      });
+      const { data: signInData, error: signInError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password: password.trim(),
+        });
 
       if (signInError) {
         console.error("Sign-in error:", signInError);
@@ -252,7 +253,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ الحصول على subdomain من localStorage كأولوية قصوى
+      // ✅ الحصول على subdomain من URL أو localStorage
       let currentSlug =
         centerSlug?.trim() ||
         localStorage.getItem("center_subdomain") ||
@@ -260,18 +261,10 @@ const Login: React.FC = () => {
 
       console.log("🏫 Center slug before fetch:", currentSlug);
 
-      // 🔹 جلب بيانات المستخدم + subdomain الخاص بالسنتر المرتبط به
+      // 🔹 جلب بيانات المستخدم
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select(`
-          id,
-          full_name,
-          email,
-          role,
-          phone,
-          center_id,
-          centers ( subdomain )
-        `)
+        .select("id, full_name, email, role, phone, center_id")
         .eq("id", user.id)
         .maybeSingle();
 
@@ -288,17 +281,31 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ جلب الـ subdomain من العلاقة
-      const centerSlugFromDB = userData.centers?.subdomain;
+      // ✅ محاولة جلب subdomain من جدول centers بناءً على center_id
+      let finalCenterSlug = currentSlug;
 
-      if (!centerSlugFromDB) {
+      if (!finalCenterSlug || finalCenterSlug === "undefined") {
+        const { data: centerCheck, error: centerCheckError } = await supabase
+          .from("centers")
+          .select("subdomain")
+          .eq("id", userData.center_id)
+          .maybeSingle();
+
+        if (centerCheckError) {
+          console.error("Center fetch error:", centerCheckError);
+        } else if (centerCheck) {
+          finalCenterSlug = centerCheck.subdomain;
+        }
+      }
+
+      if (!finalCenterSlug) {
         console.error("❌ Center subdomain not found for this user.");
-        setErrorMsg("⚠️ Center information missing.");
+        setErrorMsg("❌ Unable to detect user's center.");
         setLoading(false);
         return;
       }
 
-      console.log("✅ Center subdomain:", centerSlugFromDB);
+      console.log("✅ Final Center Slug:", finalCenterSlug);
 
       // ✅ حفظ بيانات المستخدم في localStorage
       const updatedUser = {
@@ -307,16 +314,16 @@ const Login: React.FC = () => {
         email: userData.email,
         role: userData.role,
         phone: userData.phone,
-        center_subdomain: centerSlugFromDB,
+        center_subdomain: finalCenterSlug,
       };
       localStorage.setItem("user", JSON.stringify(updatedUser));
       console.log("🔍 User data saved:", updatedUser);
 
       // ✅ تحديد المسار بناءً على الدور (role)
-      const redirectPath = `/${centerSlugFromDB}/dashboard/${userData.role.toLowerCase()}`;
+      const redirectPath = `/${finalCenterSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // ✅ التوجيه الصحيح
+      // ✅ إعادة التوجيه للوحة التحكم
       window.location.replace(redirectPath);
     } catch (err) {
       console.error("Login error:", err);
@@ -348,7 +355,10 @@ const Login: React.FC = () => {
 
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Email
               </label>
               <input
@@ -363,7 +373,10 @@ const Login: React.FC = () => {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700"
+              >
                 Password
               </label>
               <input
@@ -388,7 +401,11 @@ const Login: React.FC = () => {
               disabled={loading}
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign in"}
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                "Sign in"
+              )}
             </button>
           </form>
         </div>
