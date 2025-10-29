@@ -231,7 +231,7 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // تسجيل الدخول
+      // ✅ تسجيل الدخول عبر Supabase
       const { data: signInData, error: signInError } =
         await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -252,7 +252,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ تحديد الـ center slug
+      // ✅ تحديد الـ center slug الحالي (من URL أو التخزين)
       let currentSlug =
         centerSlug?.trim() ||
         localStorage.getItem("center_subdomain") ||
@@ -260,12 +260,24 @@ const Login: React.FC = () => {
 
       console.log("🏫 Center slug before fetch:", currentSlug);
 
-      // ✅ جلب بيانات المستخدم من جدول users
+      // ✅ جلب بيانات المستخدم + ربطها بالـ center
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select("id, full_name, email, role, phone, center_id")
+        .select(
+          `
+          id,
+          full_name,
+          email,
+          role,
+          phone,
+          center_id,
+          centers (
+            subdomain
+          )
+        `
+        )
         .eq("id", user.id)
-        .maybeSingle();
+        .single();
 
       if (userError) {
         console.error("User fetch error:", userError);
@@ -280,23 +292,11 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ لو الـ slug مش محدد، نجيبه من جدول centers
-      let finalCenterSlug = currentSlug;
+      console.log("🔍 User data:", userData);
 
-      if (!finalCenterSlug || finalCenterSlug === "undefined") {
-        const { data: centerData, error: centerError } = await supabase
-          .from("centers")
-          .select("subdomain")
-          .eq("id", userData.center_id)
-          .maybeSingle();
-
-        if (centerError) {
-          console.error("Center fetch error:", centerError);
-        } else if (centerData) {
-          finalCenterSlug = centerData.subdomain;
-          console.log("✅ Center slug from DB:", finalCenterSlug);
-        }
-      }
+      // ✅ نجيب الـ subdomain الحقيقي من العلاقة
+      let finalCenterSlug =
+        userData.centers?.subdomain || currentSlug || "undefined";
 
       // ✅ تأكيد وجود slug فعلي
       if (!finalCenterSlug || finalCenterSlug === "undefined") {
@@ -306,7 +306,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ حفظ بيانات المستخدم
+      // ✅ حفظ بيانات المستخدم في localStorage
       const updatedUser = {
         id: userData.id,
         name: userData.full_name,
@@ -318,7 +318,7 @@ const Login: React.FC = () => {
 
       localStorage.setItem("user", JSON.stringify(updatedUser));
       localStorage.setItem("center_subdomain", finalCenterSlug);
-      console.log("🔍 User data saved:", updatedUser);
+      console.log("✅ User data saved:", updatedUser);
 
       // ✅ التوجيه للوحة التحكم الصحيحة
       const redirectPath = `/${finalCenterSlug}/dashboard/${userData.role.toLowerCase()}`;
