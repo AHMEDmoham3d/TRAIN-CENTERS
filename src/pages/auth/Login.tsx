@@ -261,7 +261,7 @@ const Login: React.FC = () => {
 
       console.log("🏫 Center slug before fetch:", currentSlug);
 
-      // 🔹 جلب بيانات المستخدم
+      // 🔹 جلب بيانات المستخدم من جدول users
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("id, full_name, email, role, phone, center_id")
@@ -291,14 +291,17 @@ const Login: React.FC = () => {
           .eq("id", userData.center_id)
           .maybeSingle();
 
+        console.log("🏫 Center query result:", centerCheck, centerCheckError);
+
         if (centerCheckError) {
           console.error("Center fetch error:", centerCheckError);
-        } else if (centerCheck) {
+        } else if (centerCheck && centerCheck.subdomain) {
           finalCenterSlug = centerCheck.subdomain;
         }
       }
 
-      if (!finalCenterSlug) {
+      // ✅ تأكد من إن الـ finalCenterSlug فيه قيمة فعلًا
+      if (!finalCenterSlug || finalCenterSlug === "undefined" || finalCenterSlug === null) {
         console.error("❌ Center subdomain not found for this user.");
         setErrorMsg("❌ Unable to detect user's center.");
         setLoading(false);
