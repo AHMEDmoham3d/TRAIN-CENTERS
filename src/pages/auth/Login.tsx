@@ -197,14 +197,13 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ حفظ الـ center_slug بمجرد دخول المستخدم على صفحة اللوجين
+  // ✅ تحديد الـ subdomain من URL أو LocalStorage عند فتح الصفحة
   useEffect(() => {
     let slugFromURL = centerSlug?.trim();
 
-    // لو مش موجود، نحاول ناخده من pathname
     if (!slugFromURL) {
       const pathPart = window.location.pathname.split("/")[1];
-      if (pathPart && pathPart.length > 0 && pathPart !== "login") {
+      if (pathPart && pathPart !== "login") {
         slugFromURL = pathPart;
       }
     }
@@ -217,7 +216,7 @@ const Login: React.FC = () => {
     }
   }, [centerSlug]);
 
-  // ✅ عند التحميل الأول، نتأكد إن مفيش جلسة مستخدم محفوظة
+  // ✅ تأكد من عدم وجود جلسة مستخدم قديمة
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
@@ -232,7 +231,7 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // 🔹 تسجيل الدخول عبر Supabase Auth
+      // تسجيل الدخول
       const { data: signInData, error: signInError } =
         await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -253,7 +252,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ الحصول على subdomain من URL أو localStorage
+      // ✅ تحديد الـ center slug
       let currentSlug =
         centerSlug?.trim() ||
         localStorage.getItem("center_subdomain") ||
@@ -261,7 +260,7 @@ const Login: React.FC = () => {
 
       console.log("🏫 Center slug before fetch:", currentSlug);
 
-      // 🔹 جلب بيانات المستخدم من جدول users
+      // ✅ جلب بيانات المستخدم من جدول users
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("id, full_name, email, role, phone, center_id")
@@ -281,36 +280,33 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ محاولة جلب subdomain من جدول centers بناءً على center_id
+      // ✅ لو الـ slug مش محدد، نجيبه من جدول centers
       let finalCenterSlug = currentSlug;
 
       if (!finalCenterSlug || finalCenterSlug === "undefined") {
-        const { data: centerCheck, error: centerCheckError } = await supabase
+        const { data: centerData, error: centerError } = await supabase
           .from("centers")
           .select("subdomain")
           .eq("id", userData.center_id)
           .maybeSingle();
 
-        console.log("🏫 Center query result:", centerCheck, centerCheckError);
-
-        if (centerCheckError) {
-          console.error("Center fetch error:", centerCheckError);
-        } else if (centerCheck && centerCheck.subdomain) {
-          finalCenterSlug = centerCheck.subdomain;
+        if (centerError) {
+          console.error("Center fetch error:", centerError);
+        } else if (centerData) {
+          finalCenterSlug = centerData.subdomain;
+          console.log("✅ Center slug from DB:", finalCenterSlug);
         }
       }
 
-      // ✅ تأكد من إن الـ finalCenterSlug فيه قيمة فعلًا
-      if (!finalCenterSlug || finalCenterSlug === "undefined" || finalCenterSlug === null) {
+      // ✅ تأكيد وجود slug فعلي
+      if (!finalCenterSlug || finalCenterSlug === "undefined") {
         console.error("❌ Center subdomain not found for this user.");
         setErrorMsg("❌ Unable to detect user's center.");
         setLoading(false);
         return;
       }
 
-      console.log("✅ Final Center Slug:", finalCenterSlug);
-
-      // ✅ حفظ بيانات المستخدم في localStorage
+      // ✅ حفظ بيانات المستخدم
       const updatedUser = {
         id: userData.id,
         name: userData.full_name,
@@ -319,14 +315,15 @@ const Login: React.FC = () => {
         phone: userData.phone,
         center_subdomain: finalCenterSlug,
       };
+
       localStorage.setItem("user", JSON.stringify(updatedUser));
+      localStorage.setItem("center_subdomain", finalCenterSlug);
       console.log("🔍 User data saved:", updatedUser);
 
-      // ✅ تحديد المسار بناءً على الدور (role)
+      // ✅ التوجيه للوحة التحكم الصحيحة
       const redirectPath = `/${finalCenterSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
-      // ✅ إعادة التوجيه للوحة التحكم
       window.location.replace(redirectPath);
     } catch (err) {
       console.error("Login error:", err);
