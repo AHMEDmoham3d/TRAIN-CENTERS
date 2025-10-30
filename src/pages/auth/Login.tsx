@@ -197,7 +197,7 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ تحديد الـ subdomain من URL أو LocalStorage عند فتح الصفحة
+  // ✅ تحديد subdomain من URL أو LocalStorage
   useEffect(() => {
     let slugFromURL = centerSlug?.trim();
 
@@ -216,7 +216,7 @@ const Login: React.FC = () => {
     }
   }, [centerSlug]);
 
-  // ✅ تأكد من عدم وجود جلسة مستخدم قديمة
+  // ✅ إزالة الجلسة القديمة
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) {
@@ -231,7 +231,7 @@ const Login: React.FC = () => {
     setErrorMsg("");
 
     try {
-      // ✅ تسجيل الدخول عبر Supabase
+      // 🔹 تسجيل الدخول
       const { data: signInData, error: signInError } =
         await supabase.auth.signInWithPassword({
           email: email.trim(),
@@ -252,61 +252,38 @@ const Login: React.FC = () => {
         return;
       }
 
-      // ✅ تحديد الـ center slug الحالي (من URL أو التخزين)
-      let currentSlug =
-        centerSlug?.trim() ||
-        localStorage.getItem("center_subdomain") ||
-        window.location.pathname.split("/")[1];
-
-      console.log("🏫 Center slug before fetch:", currentSlug);
-
-      // ✅ جلب بيانات المستخدم + ربطها بالـ center
+      // 🔹 جلب بيانات المستخدم (بما فيها center_id)
       const { data: userData, error: userError } = await supabase
         .from("users")
-        .select(
-          `
-          id,
-          full_name,
-          email,
-          role,
-          phone,
-          center_id,
-          centers (
-            subdomain
-          )
-        `
-        )
+        .select("id, full_name, email, role, phone, center_id")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (userError) {
+      if (userError || !userData) {
         console.error("User fetch error:", userError);
         setErrorMsg("⚠️ Error fetching user data.");
         setLoading(false);
         return;
       }
 
-      if (!userData) {
-        setErrorMsg("❌ This account is not registered in any center.");
+      // 🔹 جلب subdomain بناءً على center_id من قاعدة البيانات مباشرة
+      const { data: centerData, error: centerError } = await supabase
+        .from("centers")
+        .select("subdomain")
+        .eq("id", userData.center_id)
+        .maybeSingle();
+
+      if (centerError || !centerData) {
+        console.error("Center fetch error:", centerError);
+        setErrorMsg("❌ Could not find user's center.");
         setLoading(false);
         return;
       }
 
-      console.log("🔍 User data:", userData);
+      const finalCenterSlug = centerData.subdomain;
+      console.log("✅ Center subdomain from DB:", finalCenterSlug);
 
-      // ✅ نجيب الـ subdomain الحقيقي من العلاقة
-      let finalCenterSlug =
-        userData.centers?.subdomain || currentSlug || "undefined";
-
-      // ✅ تأكيد وجود slug فعلي
-      if (!finalCenterSlug || finalCenterSlug === "undefined") {
-        console.error("❌ Center subdomain not found for this user.");
-        setErrorMsg("❌ Unable to detect user's center.");
-        setLoading(false);
-        return;
-      }
-
-      // ✅ حفظ بيانات المستخدم في localStorage
+      // ✅ حفظ بيانات المستخدم
       const updatedUser = {
         id: userData.id,
         name: userData.full_name,
@@ -318,9 +295,10 @@ const Login: React.FC = () => {
 
       localStorage.setItem("user", JSON.stringify(updatedUser));
       localStorage.setItem("center_subdomain", finalCenterSlug);
-      console.log("✅ User data saved:", updatedUser);
 
-      // ✅ التوجيه للوحة التحكم الصحيحة
+      console.log("🔍 User data saved:", updatedUser);
+
+      // ✅ إعادة التوجيه للمسار الصحيح
       const redirectPath = `/${finalCenterSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
 
