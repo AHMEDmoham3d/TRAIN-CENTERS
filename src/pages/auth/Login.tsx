@@ -197,22 +197,29 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // ✅ تحديد subdomain من URL أو LocalStorage
+  // ✅ تحديد subdomain من URL أو LocalStorage (مع تنظيف)
   useEffect(() => {
     let slugFromURL = centerSlug?.trim();
 
-    if (!slugFromURL) {
+    // لو الرابط مش بيحتوي على slug واضح، نحاول نجيبه من المسار
+    if (!slugFromURL || slugFromURL === "undefined" || slugFromURL === "") {
       const pathPart = window.location.pathname.split("/")[1];
-      if (pathPart && pathPart !== "login") {
-        slugFromURL = pathPart;
+      if (pathPart && pathPart !== "login" && pathPart !== "undefined") {
+        slugFromURL = pathPart.trim();
       }
     }
 
-    if (slugFromURL) {
-      localStorage.setItem("center_subdomain", slugFromURL);
-      console.log("✅ Saved center_subdomain:", slugFromURL);
+    // ✅ تنظيف أي قيمة قديمة خطأ
+    if (
+      slugFromURL === "undefined" ||
+      !slugFromURL ||
+      slugFromURL.trim() === ""
+    ) {
+      localStorage.removeItem("center_subdomain");
+      console.warn("⚠️ Removed invalid center_subdomain from localStorage");
     } else {
-      console.warn("⚠️ No centerSlug found in URL or pathname");
+      localStorage.setItem("center_subdomain", slugFromURL);
+      console.log("✅ Saved valid center_subdomain:", slugFromURL);
     }
   }, [centerSlug]);
 
@@ -252,7 +259,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🔹 جلب بيانات المستخدم (بما فيها center_id)
+      // 🔹 جلب بيانات المستخدم
       const { data: userData, error: userError } = await supabase
         .from("users")
         .select("id, full_name, email, role, phone, center_id")
@@ -266,7 +273,7 @@ const Login: React.FC = () => {
         return;
       }
 
-      // 🔹 جلب subdomain بناءً على center_id من قاعدة البيانات مباشرة
+      // 🔹 جلب subdomain من جدول centers
       const { data: centerData, error: centerError } = await supabase
         .from("centers")
         .select("subdomain")
@@ -280,8 +287,14 @@ const Login: React.FC = () => {
         return;
       }
 
-      const finalCenterSlug = centerData.subdomain;
-      console.log("✅ Center subdomain from DB:", finalCenterSlug);
+      const finalCenterSlug = centerData.subdomain?.trim();
+
+      if (!finalCenterSlug || finalCenterSlug === "undefined") {
+        console.error("❌ Invalid subdomain from DB:", finalCenterSlug);
+        setErrorMsg("❌ Center subdomain is invalid.");
+        setLoading(false);
+        return;
+      }
 
       // ✅ حفظ بيانات المستخدم
       const updatedUser = {
@@ -295,13 +308,11 @@ const Login: React.FC = () => {
 
       localStorage.setItem("user", JSON.stringify(updatedUser));
       localStorage.setItem("center_subdomain", finalCenterSlug);
-
       console.log("🔍 User data saved:", updatedUser);
 
       // ✅ إعادة التوجيه للمسار الصحيح
       const redirectPath = `/${finalCenterSlug}/dashboard/${userData.role.toLowerCase()}`;
       console.log("✅ Redirecting to:", redirectPath);
-
       window.location.replace(redirectPath);
     } catch (err) {
       console.error("Login error:", err);
