@@ -115,7 +115,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   // ✅ تسجيل الدخول (غير مستخدم حاليًا لأننا بنسجله يدويًا في Login.tsx)
-  login: async (email: string, password: string) => {
+  login: async (_email: string, _password: string) => {
     set({ loading: false, error: null });
   },
 
