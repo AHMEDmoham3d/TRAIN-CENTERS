@@ -215,8 +215,9 @@ const StudentDashboard: React.FC = () => {
 
               // fetch videos for this teacher
               const { data: videosData, error: videosError } = await supabase
-                .from("videos")
+                .from("student_accessible_videos")
                 .select("id, teacher_id, title, description, video_url, uploaded_at")
+                .eq("student_id", user.id)
                 .eq("teacher_id", s.teacher_id)
                 .order("uploaded_at", { ascending: false });
 
