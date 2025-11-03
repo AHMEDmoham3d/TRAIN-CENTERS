@@ -112,248 +112,56 @@ const StudentDashboard: React.FC = () => {
   >([]);
   const [showVideosPanel, setShowVideosPanel] = useState(false);
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
+  const [videos, setVideos] = useState<any[]>([]);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const fetchVideos = async () => {
       if (!user) {
         setLoading(false);
         return;
       }
 
-      // get center subdomain from user or localStorage (used for scoping if needed)
-      const currentCenterSubdomain =
-        (user as any).center_subdomain || localStorage.getItem("center_subdomain");
-
-      setCenterSubdomain(currentCenterSubdomain);
-
-      console.log("🔍 Center subdomain:", currentCenterSubdomain);
-      console.log("🔍 User data:", user);
-
-      setLoading(true);
       try {
-        // 1) optionally resolve center id (if you want to scope teachers to the center)
-        let centerId: string | null = null;
-        if (currentCenterSubdomain) {
-          const centerRes = await supabase
-            .from("centers")
-            .select("id")
-            .ilike("subdomain", currentCenterSubdomain)
-            .single();
-          if (!centerRes.error && centerRes.data) {
-            centerId = centerRes.data.id;
-          }
-        }
+        setLoading(true);
 
-        // 2) fetch subscriptions for this student (we fetch all subscriptions and later compute active/expired)
-        const { data: subs, error: subsError } = await supabase
-          .from("subscriptions")
-          .select("id, student_id, teacher_id, start_date, end_date, is_active")
-          .eq("student_id", user.id);
-
-        if (subsError) {
-          console.error("Error fetching subscriptions:", subsError);
-          toast.error("Failed to load subscriptions");
-          setSubscriptionsData([]);
-        } else if (!subs || subs.length === 0) {
-          setSubscriptionsData([]);
-        } else {
-          // ✅ فلترة الاشتراكات لتشمل فقط النشطة (اللي مازالت سارية)
-          const activeSubs = subs.filter(
-            (s: any) => s.is_active && new Date(s.end_date) > new Date()
-          );
-
-          // ✅ لو مفيش اشتراكات نشطة، يظهر نفس الرسالة
-          if (activeSubs.length === 0) {
-            setSubscriptionsData([]);
-            setLoading(false);
-            return;
-          }
-
-          // ✅ جلب بيانات المحتوى فقط للاشتراكات النشطة
-          const subsWithContent: SubscriptionItem[] = await Promise.all(
-            activeSubs.map(async (s: any) => {
-              const subItem: SubscriptionItem = {
-                id: s.id,
-                student_id: s.student_id,
-                teacher_id: s.teacher_id,
-                start_date: s.start_date,
-                end_date: s.end_date,
-                is_active: s.is_active,
-                teacher: null,
-                videos: [],
-                materials: [],
-                exams: [],
-              };
-
-              // fetch teacher info (limit by center if centerId is available)
-              const { data: teacherData, error: teacherError } = await supabase
-                .from("teachers")
-                .select("id, full_name, email, center_id")
-                .eq("id", s.teacher_id)
-                .maybeSingle();
-
-              if (!teacherError && teacherData) {
-                // optional: ensure teacher belongs to the same center if you require scoping
-                if (!centerId || teacherData.center_id === centerId) {
-                  subItem.teacher = {
-                    id: teacherData.id,
-                    full_name: teacherData.full_name,
-                    email: teacherData.email,
-                  };
-                } else {
-                  // teacher belongs to different center — still attach (you can hide if needed)
-                  subItem.teacher = {
-                    id: teacherData.id,
-                    full_name: teacherData.full_name,
-                    email: teacherData.email,
-                  };
-                }
-              }
-
-              console.log("🔍 Teacher data for subscription:", s.teacher_id, teacherData);
-              console.log("🔍 Center ID:", centerId, "Teacher center_id:", teacherData?.center_id);
-
-              // fetch videos for this teacher
-              const { data: videosData, error: videosError } = await supabase
-                .from("student_accessible_videos")
-                .select("id, teacher_id, title, description, video_url, uploaded_at")
-                .eq("student_id", user.id)
-                .eq("teacher_id", s.teacher_id)
-                .order("uploaded_at", { ascending: false });
-
-              console.log("🔍 Videos for teacher", s.teacher_id, ":", videosData, videosError);
-
-              if (!videosError && videosData) {
-                subItem.videos = videosData;
-              } else {
-                subItem.videos = [];
-              }
-
-              // fetch materials for this teacher
-              const { data: materialsData, error: materialsError } = await supabase
-                .from("materials")
-                .select("id, teacher_id, title, description, file_url, uploaded_at")
-                .eq("teacher_id", s.teacher_id)
-                .order("uploaded_at", { ascending: false });
-
-              if (!materialsError && materialsData) {
-                subItem.materials = materialsData;
-              } else {
-                subItem.materials = [];
-              }
-
-              // fetch exams created by this teacher
-              const { data: examsData, error: examsError } = await supabase
-                .from("exams")
-                .select("id, teacher_id, title, description, total_marks, created_at")
-                .eq("teacher_id", s.teacher_id)
-                .order("created_at", { ascending: false });
-
-              if (!examsError && examsData) {
-                subItem.exams = examsData;
-              } else {
-                subItem.exams = [];
-              }
-
-              return subItem;
-            })
-          );
-
-          console.log("🔍 Final subscriptions data:", subsWithContent);
-          setSubscriptionsData(subsWithContent);
-        }
-
-        // --- Keep other dashboard content (mocked or lightweight) to preserve original layout ---
-
-        // upcoming lessons: kept as sample/mock until you add a schedule table
-        setUpcomingLessons([
-          {
-            id: "1",
-            title: "Advanced Mathematics",
-            time: "10:00 AM - 11:30 AM",
-            teacher: "Dr. Sarah Johnson",
-          },
-          {
-            id: "2",
-            title: "Physics Fundamentals",
-            time: "1:00 PM - 2:30 PM",
-            teacher: "Prof. Michael Chen",
-          },
-        ]);
-
-        // pending assignments: derive from exam_results (mock fallback)
-        const { data: examResults } = await supabase
-          .from("exam_results")
-          .select("id, exam_id, submitted_at, score, exams(title, description)")
-          .eq("student_id", user.id)
-          .is("score", null);
-
-        if (examResults) {
-          setPendingAssignments(
-            examResults.map((er: any) => ({
-              id: er.id,
-              title: er.exams?.title || "Exam",
-              dueDate: "Soon",
-              course: er.exams?.title || "Course",
-              status: "urgent",
-            }))
-          );
-        } else {
-          setPendingAssignments([]);
-        }
-
-        // course progress: build from subscriptions (simple mock percentages)
-        if (Array.isArray(subs) && subs.length > 0) {
-          setCourseProgress(
-            subs.map((s: any, idx: number) => ({
-              id: s.id,
-              title: `Course ${idx + 1}`,
-              progress: Math.floor(Math.random() * 100),
-              totalModules: 12,
-              completedModules: Math.floor(Math.random() * 12),
-            }))
-          );
-        } else {
-          setCourseProgress([]);
-        }
-
-        // ai suggestions & achievements (mocked)
-        setAiSuggestions([
-          {
-            id: "1",
-            title: "Review Calculus Fundamentals",
-            reason: "Based on your recent quiz performance",
-            icon: "BookOpen",
-          },
-        ]);
-
-        const { data: payments } = await supabase
-          .from("payments")
+        // ✅ جلب الفيديوهات من الـ View مباشرة
+        const { data, error } = await supabase
+          .from("student_accessible_videos")
           .select("*")
           .eq("student_id", user.id)
-          .eq("status", "confirmed");
+          .order("uploaded_at", { ascending: false });
 
-        if (payments && payments.length > 0) {
-          setRecentAchievements(
-            payments.slice(0, 2).map((p: any) => ({
-              id: p.id,
-              title: "Subscription Payment",
-              description: `Paid ${p.amount}`,
-              date: new Date(p.payment_date).toLocaleDateString(),
-            }))
-          );
-        } else {
-          setRecentAchievements([]);
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          toast("No available videos found for your account");
+          setVideos([]);
+          setLoading(false);
+          return;
         }
-      } catch (error) {
-        console.error("Error fetching student dashboard data:", error);
-        toast.error("Failed to load dashboard data");
+
+        // ✅ تنسيق البيانات لتناسب العرض
+        const formatted = data.map((item) => ({
+          id: item.video_id,
+          title: item.video_title,
+          video_url: item.video_url,
+          uploaded_at: item.uploaded_at,
+          teacher: {
+            id: item.teacher_id,
+            full_name: item.teacher_name,
+          },
+        }));
+
+        setVideos(formatted);
+      } catch (error: any) {
+        console.error("Error fetching videos:", error);
+        toast.error("Failed to load videos");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
+    fetchVideos();
   }, [user]);
 
   // compute subscription status (active / expired / inactive)
