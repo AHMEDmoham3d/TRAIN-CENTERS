@@ -116,6 +116,38 @@ const StudentDashboard: React.FC = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       if (!user) {
+        // Set mock data to display sections even without user
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
+        ]);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+        setCourseProgress([
+          {
+            id: "1",
+            title: "Course 1",
+            progress: 75,
+            totalModules: 12,
+            completedModules: 9,
+          },
+        ]);
         setLoading(false);
         return;
       }
@@ -393,10 +425,10 @@ const StudentDashboard: React.FC = () => {
         {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {`Welcome, ${user?.name || ""}`}
+            {`Welcome, ${user?.name || "Student"}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
-          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Unknown"}</p>
+          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Demo Center"}</p>
         </div>
 
         {/* Overview cards (kept old layout structure) */}
