@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
   BookOpen,
   FileText,
@@ -90,32 +89,16 @@ interface SubscriptionItem {
 }
 
 const StudentDashboard: React.FC = () => {
-  const { t } = useTranslation();
   const { user } = useAuthStore();
 
-  const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>(
-    []
-  );
-  const [pendingAssignments, setPendingAssignments] = useState<
-    PendingAssignment[]
-  >([]);
-  const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
-  const [recentAchievements, setRecentAchievements] = useState<
-    RecentAchievement[]
-  >([]);
   const [loading, setLoading] = useState(true);
 
-  // subscriptions grouped by teacher + their content
-  const [subscriptionsData, setSubscriptionsData] = useState<
-    SubscriptionItem[]
-  >([]);
   const [showVideosPanel, setShowVideosPanel] = useState(false);
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
   const [videos, setVideos] = useState<any[]>([]);
 
   useEffect(() => {
-    const fetchVideos = async () => {
+    const fetchData = async () => {
       if (!user) {
         setLoading(false);
         return;
@@ -124,44 +107,55 @@ const StudentDashboard: React.FC = () => {
       try {
         setLoading(true);
 
-        // ✅ جلب الفيديوهات من الـ View مباشرة
-        const { data, error } = await supabase
-          .from("student_accessible_videos")
-          .select("*")
-          .eq("student_id", user.id)
-          .order("uploaded_at", { ascending: false });
+        // جلب اسم السنتر من السابيز
+        if ((user as any).center_id) {
+          const { data: centerData, error: centerError } = await supabase
+            .from("centers")
+            .select("subdomain")
+            .eq("id", (user as any).center_id)
+            .single();
 
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-          toast("No available videos found for your account");
-          setVideos([]);
-          setLoading(false);
-          return;
+          if (!centerError && centerData) {
+            setCenterSubdomain(centerData.subdomain);
+          }
         }
 
-        // ✅ تنسيق البيانات لتناسب العرض
-        const formatted = data.map((item) => ({
-          id: item.video_id,
-          title: item.video_title,
-          video_url: item.video_url,
-          uploaded_at: item.uploaded_at,
-          teacher: {
-            id: item.teacher_id,
-            full_name: item.teacher_name,
-          },
-        }));
+        // جلب الفيديوهات من المدرس المشترك معه الطالب
+        const { data: videoData, error: videoError } = await supabase
+          .from("videos")
+          .select("*, teachers(*)")
+          .eq("teacher_id", (user as any).teacher_id)
+          .order("uploaded_at", { ascending: false });
 
-        setVideos(formatted);
+        if (videoError) throw videoError;
+
+        if (!videoData || videoData.length === 0) {
+          toast("No available videos found for your account");
+          setVideos([]);
+        } else {
+          // تنسيق البيانات لتناسب العرض
+          const formatted = videoData.map((item) => ({
+            id: item.id,
+            title: item.title,
+            video_url: item.video_url,
+            uploaded_at: item.uploaded_at,
+            teacher: {
+              id: item.teacher_id,
+              full_name: item.teachers?.full_name || "Unknown Teacher",
+            },
+          }));
+
+          setVideos(formatted);
+        }
       } catch (error: any) {
-        console.error("Error fetching videos:", error);
-        toast.error("Failed to load videos");
+        console.error("Error fetching data:", error);
+        toast.error("Failed to load dashboard data");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchVideos();
+    fetchData();
   }, [user]);
 
   // compute subscription status (active / expired / inactive)
@@ -202,7 +196,7 @@ const StudentDashboard: React.FC = () => {
         {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {`Welcome, ${user?.name || ""}`}
+            {`Welcome, ${(user as any)?.full_name || ""}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
           <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Unknown"}</p>
