@@ -379,6 +379,39 @@ const StudentDashboard: React.FC = () => {
       } catch (error) {
         console.error("Error fetching student dashboard data:", error);
         toast.error("Failed to load dashboard data");
+
+        // Set mock data if fetching fails
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
+        ]);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+        setCourseProgress([
+          {
+            id: "1",
+            title: "Course 1",
+            progress: 75,
+            totalModules: 12,
+            completedModules: 9,
+          },
+        ]);
       } finally {
         setLoading(false);
       }
