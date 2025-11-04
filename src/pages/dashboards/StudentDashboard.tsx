@@ -90,11 +90,7 @@ const StudentDashboard: React.FC = () => {
   }
 
   return (
-    <DashboardLayout
-      onNavAction={(action: string) => {
-        if (action === "showVideos") setShowVideosPanel(true);
-      }}
-    >
+    <DashboardLayout>
       <div className="space-y-6">
         {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
