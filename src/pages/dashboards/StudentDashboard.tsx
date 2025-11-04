@@ -673,4 +673,3 @@ const StudentDashboard: React.FC = () => {
     </DashboardLayout>
   );
 };
-
