@@ -438,11 +438,7 @@ function App() {
         {/* ✅ Dashboards */}
         <Route
           path="/:centerSlug/dashboard/student"
-          element={
-            <PrivateRoute allowedRoles={["student"]}>
-              <StudentDashboard />
-            </PrivateRoute>
-          }
+          element={<StudentDashboard />}
         />
         <Route
           path="/:centerSlug/dashboard/teacher"

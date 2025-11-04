@@ -658,16 +658,68 @@ const StudentDashboard: React.FC = () => {
         {/* Progress / AI / other sections preserved as earlier */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
-          <div className="text-sm text-gray-500 mt-2">
-            Your course progress and metrics will appear here.
-          </div>
+          {courseProgress.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {courseProgress.map((progress) => (
+                <div key={progress.id} className="p-4 bg-gray-50 rounded-md border border-gray-100">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-medium text-gray-900">{progress.title}</h3>
+                    <span className="text-sm text-gray-500">{progress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-primary-600 h-2 rounded-full"
+                      style={{ width: `${progress.progress}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {progress.completedModules} of {progress.totalModules} modules completed
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Your course progress and metrics will appear here.
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">AI Suggestions</h2>
-          <div className="text-sm text-gray-500 mt-2">
-            Personalized suggestions will appear here.
-          </div>
+          {aiSuggestions.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {aiSuggestions.map((suggestion) => (
+                <div key={suggestion.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                  <p className="font-medium text-gray-900">{suggestion.title}</p>
+                  <p className="text-sm text-gray-500 mt-1">{suggestion.reason}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Personalized suggestions will appear here.
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow-card p-6">
+          <h2 className="text-xl font-semibold">Schedules</h2>
+          {upcomingLessons.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {upcomingLessons.map((lesson) => (
+                <div key={lesson.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                  <p className="font-medium text-gray-900">{lesson.title}</p>
+                  <p className="text-sm text-gray-500 mt-1">{lesson.time}</p>
+                  <p className="text-sm text-gray-500">Teacher: {lesson.teacher}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Your upcoming schedules and appointments will appear here.
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>
