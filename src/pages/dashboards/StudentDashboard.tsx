@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useParams } from "react-router-dom";
 import {
   BookOpen,
   FileText,
@@ -92,6 +93,7 @@ interface SubscriptionItem {
 const StudentDashboard: React.FC = () => {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const { centerSlug } = useParams<{ centerSlug: string }>();
 
   const [upcomingLessons, setUpcomingLessons] = useState<UpcomingLesson[]>(
     []
@@ -152,9 +154,9 @@ const StudentDashboard: React.FC = () => {
         return;
       }
 
-      // get center subdomain from user or localStorage (used for scoping if needed)
+      // get center subdomain from URL params or user or localStorage
       const currentCenterSubdomain =
-        (user as any).center_subdomain || localStorage.getItem("center_subdomain");
+        centerSlug || (user as any).center_subdomain || localStorage.getItem("center_subdomain");
 
       setCenterSubdomain(currentCenterSubdomain);
 
@@ -461,7 +463,7 @@ const StudentDashboard: React.FC = () => {
             {`Welcome, ${user?.name || "Student"}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
-          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Demo Center"}</p>
+          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Unknown"}</p>
         </div>
 
         {/* Overview cards (kept old layout structure) */}
