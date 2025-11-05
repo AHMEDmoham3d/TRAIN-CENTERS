@@ -112,56 +112,312 @@ const StudentDashboard: React.FC = () => {
   >([]);
   const [showVideosPanel, setShowVideosPanel] = useState(false);
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
-  const [videos, setVideos] = useState<any[]>([]);
 
   useEffect(() => {
-    const fetchVideos = async () => {
+    const fetchDashboardData = async () => {
       if (!user) {
+        // Set mock data to display sections even without user
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
+        ]);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+        setCourseProgress([
+          {
+            id: "1",
+            title: "Course 1",
+            progress: 75,
+            totalModules: 12,
+            completedModules: 9,
+          },
+        ]);
         setLoading(false);
         return;
       }
 
+      // get center subdomain from user or localStorage (used for scoping if needed)
+      const currentCenterSubdomain =
+        (user as any).center_subdomain || localStorage.getItem("center_subdomain");
+
+      setCenterSubdomain(currentCenterSubdomain);
+
+      console.log("🔍 Center subdomain:", currentCenterSubdomain);
+      console.log("🔍 User data:", user);
+
+      setLoading(true);
       try {
-        setLoading(true);
-
-        // ✅ جلب الفيديوهات من الـ View مباشرة
-        const { data, error } = await supabase
-          .from("student_accessible_videos")
-          .select("*")
-          .eq("student_id", user.id)
-          .order("uploaded_at", { ascending: false });
-
-        if (error) throw error;
-
-        if (!data || data.length === 0) {
-          toast("No available videos found for your account");
-          setVideos([]);
-          setLoading(false);
-          return;
+        // 1) optionally resolve center id (if you want to scope teachers to the center)
+        let centerId: string | null = null;
+        if (currentCenterSubdomain) {
+          const centerRes = await supabase
+            .from("centers")
+            .select("id")
+            .ilike("subdomain", currentCenterSubdomain)
+            .single();
+          if (!centerRes.error && centerRes.data) {
+            centerId = centerRes.data.id;
+          }
         }
 
-        // ✅ تنسيق البيانات لتناسب العرض
-        const formatted = data.map((item) => ({
-          id: item.video_id,
-          title: item.video_title,
-          video_url: item.video_url,
-          uploaded_at: item.uploaded_at,
-          teacher: {
-            id: item.teacher_id,
-            full_name: item.teacher_name,
-          },
-        }));
+        // 2) fetch subscriptions for this student (we fetch all subscriptions and later compute active/expired)
+        const { data: subs, error: subsError } = await supabase
+          .from("subscriptions")
+          .select("id, student_id, teacher_id, start_date, end_date, is_active")
+          .eq("student_id", user.id);
 
-        setVideos(formatted);
-      } catch (error: any) {
-        console.error("Error fetching videos:", error);
-        toast.error("Failed to load videos");
+        if (subsError) {
+          console.error("Error fetching subscriptions:", subsError);
+          toast.error("Failed to load subscriptions");
+          setSubscriptionsData([]);
+        } else if (!subs || subs.length === 0) {
+          setSubscriptionsData([]);
+        } else {
+          // ✅ فلترة الاشتراكات لتشمل فقط النشطة (اللي مازالت سارية)
+          const activeSubs = subs.filter(
+            (s: any) => s.is_active && new Date(s.end_date) > new Date()
+          );
+
+          // ✅ لو مفيش اشتراكات نشطة، يظهر نفس الرسالة
+          if (activeSubs.length === 0) {
+            setSubscriptionsData([]);
+            setLoading(false);
+            return;
+          }
+
+          // ✅ جلب بيانات المحتوى فقط للاشتراكات النشطة
+          const subsWithContent: SubscriptionItem[] = await Promise.all(
+            activeSubs.map(async (s: any) => {
+              const subItem: SubscriptionItem = {
+                id: s.id,
+                student_id: s.student_id,
+                teacher_id: s.teacher_id,
+                start_date: s.start_date,
+                end_date: s.end_date,
+                is_active: s.is_active,
+                teacher: null,
+                videos: [],
+                materials: [],
+                exams: [],
+              };
+
+              // fetch teacher info (limit by center if centerId is available)
+              const { data: teacherData, error: teacherError } = await supabase
+                .from("teachers")
+                .select("id, full_name, email, center_id")
+                .eq("id", s.teacher_id)
+                .maybeSingle();
+
+              if (!teacherError && teacherData) {
+                // optional: ensure teacher belongs to the same center if you require scoping
+                if (!centerId || teacherData.center_id === centerId) {
+                  subItem.teacher = {
+                    id: teacherData.id,
+                    full_name: teacherData.full_name,
+                    email: teacherData.email,
+                  };
+                } else {
+                  // teacher belongs to different center — still attach (you can hide if needed)
+                  subItem.teacher = {
+                    id: teacherData.id,
+                    full_name: teacherData.full_name,
+                    email: teacherData.email,
+                  };
+                }
+              }
+
+              console.log("🔍 Teacher data for subscription:", s.teacher_id, teacherData);
+              console.log("🔍 Center ID:", centerId, "Teacher center_id:", teacherData?.center_id);
+
+              // fetch videos for this teacher
+              const { data: videosData, error: videosError } = await supabase
+                .from("videos")
+                .select("id, teacher_id, title, description, video_url, uploaded_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("uploaded_at", { ascending: false });
+
+              console.log("🔍 Videos for teacher", s.teacher_id, ":", videosData, videosError);
+
+              if (!videosError && videosData) {
+                subItem.videos = videosData;
+              } else {
+                subItem.videos = [];
+              }
+
+              // fetch materials for this teacher
+              const { data: materialsData, error: materialsError } = await supabase
+                .from("materials")
+                .select("id, teacher_id, title, description, file_url, uploaded_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("uploaded_at", { ascending: false });
+
+              if (!materialsError && materialsData) {
+                subItem.materials = materialsData;
+              } else {
+                subItem.materials = [];
+              }
+
+              // fetch exams created by this teacher
+              const { data: examsData, error: examsError } = await supabase
+                .from("exams")
+                .select("id, teacher_id, title, description, total_marks, created_at")
+                .eq("teacher_id", s.teacher_id)
+                .order("created_at", { ascending: false });
+
+              if (!examsError && examsData) {
+                subItem.exams = examsData;
+              } else {
+                subItem.exams = [];
+              }
+
+              return subItem;
+            })
+          );
+
+          console.log("🔍 Final subscriptions data:", subsWithContent);
+          setSubscriptionsData(subsWithContent);
+        }
+
+        // --- Keep other dashboard content (mocked or lightweight) to preserve original layout ---
+
+        // upcoming lessons: kept as sample/mock until you add a schedule table
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
+        ]);
+
+        // pending assignments: derive from exam_results (mock fallback)
+        const { data: examResults } = await supabase
+          .from("exam_results")
+          .select("id, exam_id, submitted_at, score, exams(title, description)")
+          .eq("student_id", user.id)
+          .is("score", null);
+
+        if (examResults) {
+          setPendingAssignments(
+            examResults.map((er: any) => ({
+              id: er.id,
+              title: er.exams?.title || "Exam",
+              dueDate: "Soon",
+              course: er.exams?.title || "Course",
+              status: "urgent",
+            }))
+          );
+        } else {
+          setPendingAssignments([]);
+        }
+
+        // course progress: build from subscriptions (simple mock percentages)
+        if (Array.isArray(subs) && subs.length > 0) {
+          setCourseProgress(
+            subs.map((s: any, idx: number) => ({
+              id: s.id,
+              title: `Course ${idx + 1}`,
+              progress: Math.floor(Math.random() * 100),
+              totalModules: 12,
+              completedModules: Math.floor(Math.random() * 12),
+            }))
+          );
+        } else {
+          setCourseProgress([]);
+        }
+
+        // ai suggestions & achievements (mocked)
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("*")
+          .eq("student_id", user.id)
+          .eq("status", "confirmed");
+
+        if (payments && payments.length > 0) {
+          setRecentAchievements(
+            payments.slice(0, 2).map((p: any) => ({
+              id: p.id,
+              title: "Subscription Payment",
+              description: `Paid ${p.amount}`,
+              date: new Date(p.payment_date).toLocaleDateString(),
+            }))
+          );
+        } else {
+          setRecentAchievements([]);
+        }
+      } catch (error) {
+        console.error("Error fetching student dashboard data:", error);
+        toast.error("Failed to load dashboard data");
+
+        // Set mock data if fetching fails
+        setUpcomingLessons([
+          {
+            id: "1",
+            title: "Advanced Mathematics",
+            time: "10:00 AM - 11:30 AM",
+            teacher: "Dr. Sarah Johnson",
+          },
+          {
+            id: "2",
+            title: "Physics Fundamentals",
+            time: "1:00 PM - 2:30 PM",
+            teacher: "Prof. Michael Chen",
+          },
+        ]);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
+        setCourseProgress([
+          {
+            id: "1",
+            title: "Course 1",
+            progress: 75,
+            totalModules: 12,
+            completedModules: 9,
+          },
+        ]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchVideos();
+    fetchDashboardData();
   }, [user]);
 
   // compute subscription status (active / expired / inactive)
@@ -202,10 +458,10 @@ const StudentDashboard: React.FC = () => {
         {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
-            {`Welcome, ${user?.name || ""}`}
+            {`Welcome, ${user?.name || "Student"}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
-          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Unknown"}</p>
+          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || "Demo Center"}</p>
         </div>
 
         {/* Overview cards (kept old layout structure) */}
@@ -467,20 +723,70 @@ const StudentDashboard: React.FC = () => {
         {/* Progress / AI / other sections preserved as earlier */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
-          <div className="text-sm text-gray-500 mt-2">
-            Your course progress and metrics will appear here.
-          </div>
+          {courseProgress.length > 0 ? (
+            <div className="mt-4 space-y-4">
+              {courseProgress.map((progress) => (
+                <div key={progress.id} className="p-4 bg-gray-50 rounded-md border border-gray-100">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-medium text-gray-900">{progress.title}</h3>
+                    <span className="text-sm text-gray-500">{progress.progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-primary-600 h-2 rounded-full"
+                      style={{ width: `${progress.progress}%` }}
+                    ></div>
+                  </div>
+                  <p className="text-sm text-gray-500 mt-2">
+                    {progress.completedModules} of {progress.totalModules} modules completed
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Your course progress and metrics will appear here.
+            </div>
+          )}
         </div>
 
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">AI Suggestions</h2>
-          <div className="text-sm text-gray-500 mt-2">
-            Personalized suggestions will appear here.
-          </div>
+          {aiSuggestions.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {aiSuggestions.map((suggestion) => (
+                <div key={suggestion.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                  <p className="font-medium text-gray-900">{suggestion.title}</p>
+                  <p className="text-sm text-gray-500 mt-1">{suggestion.reason}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Personalized suggestions will appear here.
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow-card p-6">
+          <h2 className="text-xl font-semibold">Schedules</h2>
+          {upcomingLessons.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {upcomingLessons.map((lesson) => (
+                <div key={lesson.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
+                  <p className="font-medium text-gray-900">{lesson.title}</p>
+                  <p className="text-sm text-gray-500 mt-1">{lesson.time}</p>
+                  <p className="text-sm text-gray-500">Teacher: {lesson.teacher}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 mt-2">
+              Your upcoming schedules and appointments will appear here.
+            </div>
+          )}
         </div>
       </div>
     </DashboardLayout>
   );
 };
-
-export default StudentDashboard;
