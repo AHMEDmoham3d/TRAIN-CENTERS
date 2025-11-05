@@ -642,57 +642,51 @@ const StudentDashboard: React.FC = () => {
                         <div>
                           <h4 className="font-semibold mb-2">Videos</h4>
                           {sub.videos && sub.videos.length > 0 ? (
-                            <div className="space-y-2">
+                            <ul className="space-y-2">
                               {sub.videos.map((v) => (
-                                <div key={v.id} className="p-2 bg-gray-50 rounded">
-                                  <div className="font-medium">{v.title}</div>
-                                  <div className="text-xs text-gray-500 mb-1">{v.uploaded_at ? new Date(v.uploaded_at).toLocaleDateString() : "-"}</div>
-                                  {v.video_url ? (
+                                <li key={v.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
+                                  <p className="font-medium text-gray-800">{v.title}</p>
+                                  {v.video_url && (
                                     <a
                                       href={v.video_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-primary-600 text-sm inline-flex items-center"
+                                      className="text-sm text-blue-600 hover:underline"
                                     >
-                                      Watch video <ExternalLink className="ml-1 w-4 h-4" />
+                                      Watch Video
                                     </a>
-                                  ) : (
-                                    <div className="text-sm text-gray-500">No video URL provided</div>
                                   )}
-                                </div>
+                                </li>
                               ))}
-                            </div>
+                            </ul>
                           ) : (
-                            <div className="text-sm text-gray-500">No videos added yet for this teacher.</div>
+                            <p className="text-gray-500 text-sm">No videos available</p>
                           )}
                         </div>
 
                         {/* Materials */}
                         <div>
-                          <h4 className="font-semibold mb-2">Materials & Files</h4>
+                          <h4 className="font-semibold mb-2">Materials</h4>
                           {sub.materials && sub.materials.length > 0 ? (
-                            <div className="space-y-2">
+                            <ul className="space-y-2">
                               {sub.materials.map((m) => (
-                                <div key={m.id} className="p-2 bg-gray-50 rounded">
-                                  <div className="font-medium">{m.title}</div>
-                                  <div className="text-xs text-gray-500 mb-1">{m.uploaded_at ? new Date(m.uploaded_at).toLocaleDateString() : "-"}</div>
-                                  {m.file_url ? (
+                                <li key={m.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
+                                  <p className="font-medium text-gray-800">{m.title}</p>
+                                  {m.file_url && (
                                     <a
                                       href={m.file_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-primary-600 text-sm inline-flex items-center"
+                                      className="text-sm text-blue-600 hover:underline"
                                     >
-                                      Open file <ExternalLink className="ml-1 w-4 h-4" />
+                                      Download File
                                     </a>
-                                  ) : (
-                                    <div className="text-sm text-gray-500">No file provided</div>
                                   )}
-                                </div>
+                                </li>
                               ))}
-                            </div>
+                            </ul>
                           ) : (
-                            <div className="text-sm text-gray-500">No materials added yet for this teacher.</div>
+                            <p className="text-gray-500 text-sm">No materials available</p>
                           )}
                         </div>
 
@@ -700,17 +694,18 @@ const StudentDashboard: React.FC = () => {
                         <div>
                           <h4 className="font-semibold mb-2">Exams</h4>
                           {sub.exams && sub.exams.length > 0 ? (
-                            <div className="space-y-2">
-                              {sub.exams.map((ex) => (
-                                <div key={ex.id} className="p-2 bg-gray-50 rounded">
-                                  <div className="font-medium">{ex.title}</div>
-                                  <div className="text-xs text-gray-500 mb-1">{ex.description || "No description"}</div>
-                                  <div className="text-xs text-gray-500">Total marks: {ex.total_marks ?? "-"}</div>
-                                </div>
+                            <ul className="space-y-2">
+                              {sub.exams.map((e) => (
+                                <li key={e.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
+                                  <p className="font-medium text-gray-800">{e.title}</p>
+                                  <p className="text-sm text-gray-500">
+                                    Total Marks: {e.total_marks || "-"}
+                                  </p>
+                                </li>
                               ))}
-                            </div>
+                            </ul>
                           ) : (
-                            <div className="text-sm text-gray-500">No exams added yet for this teacher.</div>
+                            <p className="text-gray-500 text-sm">No exams available</p>
                           )}
                         </div>
                       </div>
