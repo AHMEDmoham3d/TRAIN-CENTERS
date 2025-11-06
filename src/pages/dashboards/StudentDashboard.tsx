@@ -642,25 +642,39 @@ const StudentDashboard: React.FC = () => {
                         <div>
                           <h4 className="font-semibold mb-2">Videos</h4>
                           {sub.videos && sub.videos.length > 0 ? (
-                            <ul className="space-y-2">
+                            <ul className="space-y-3">
                               {sub.videos.map((v) => (
-                                <li key={v.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
-                                  <p className="font-medium text-gray-800">{v.title}</p>
-                                  {v.video_url && (
-                                    <a
-                                      href={v.video_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:underline"
-                                    >
-                                      Watch Video
-                                    </a>
+                                <li
+                                  key={v.id}
+                                  className="p-3 bg-gray-50 rounded-md border border-gray-100"
+                                >
+                                  <p className="font-medium text-gray-800 mb-1">{v.title}</p>
+
+                                  {v.video_url ? (
+                                    v.video_url.includes("youtube") ? (
+                                      // لو لينك يوتيوب
+                                      <iframe
+                                        className="w-full h-48 rounded-md"
+                                        src={v.video_url.replace("watch?v=", "embed/")}
+                                        title={v.title}
+                                        allowFullScreen
+                                      ></iframe>
+                                    ) : (
+                                      // لو لينك مباشر (mp4 أو غيره)
+                                      <video
+                                        src={v.video_url}
+                                        controls
+                                        className="w-full rounded-md mt-1"
+                                      ></video>
+                                    )
+                                  ) : (
+                                    <p className="text-sm text-gray-500">No video URL available</p>
                                   )}
                                 </li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="text-gray-500 text-sm">No videos available</p>
+                            <p className="text-gray-500">No videos uploaded yet</p>
                           )}
                         </div>
 
@@ -670,23 +684,28 @@ const StudentDashboard: React.FC = () => {
                           {sub.materials && sub.materials.length > 0 ? (
                             <ul className="space-y-2">
                               {sub.materials.map((m) => (
-                                <li key={m.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
-                                  <p className="font-medium text-gray-800">{m.title}</p>
-                                  {m.file_url && (
+                                <li
+                                  key={m.id}
+                                  className="p-2 bg-gray-50 rounded-md border border-gray-100"
+                                >
+                                  <p className="font-medium text-gray-800 mb-1">{m.title}</p>
+                                  {m.file_url ? (
                                     <a
                                       href={m.file_url}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="text-sm text-blue-600 hover:underline"
+                                      className="text-primary-600 text-sm hover:underline"
                                     >
-                                      Download File
+                                      Download Material
                                     </a>
+                                  ) : (
+                                    <p className="text-sm text-gray-500">No file available</p>
                                   )}
                                 </li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="text-gray-500 text-sm">No materials available</p>
+                            <p className="text-gray-500">No materials available</p>
                           )}
                         </div>
 
@@ -696,16 +715,22 @@ const StudentDashboard: React.FC = () => {
                           {sub.exams && sub.exams.length > 0 ? (
                             <ul className="space-y-2">
                               {sub.exams.map((e) => (
-                                <li key={e.id} className="p-2 bg-gray-50 rounded-md border border-gray-100">
-                                  <p className="font-medium text-gray-800">{e.title}</p>
+                                <li
+                                  key={e.id}
+                                  className="p-2 bg-gray-50 rounded-md border border-gray-100"
+                                >
+                                  <p className="font-medium text-gray-800 mb-1">{e.title}</p>
                                   <p className="text-sm text-gray-500">
-                                    Total Marks: {e.total_marks || "-"}
+                                    Marks: {e.total_marks ?? "N/A"}
+                                  </p>
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    Created: {formatDate(e.created_at)}
                                   </p>
                                 </li>
                               ))}
                             </ul>
                           ) : (
-                            <p className="text-gray-500 text-sm">No exams available</p>
+                            <p className="text-gray-500">No exams available</p>
                           )}
                         </div>
                       </div>
