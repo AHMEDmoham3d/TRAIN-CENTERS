@@ -628,120 +628,51 @@ const StudentDashboard: React.FC = () => {
                       </div>
 
                       <div className="text-right">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            status === "active"
-                              ? "bg-green-100 text-green-800"
-                              : status === "expired"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
-                          }`}
-                        >
-                          {status === "active" ? "Active" : status === "expired" ? "Expired" : "Inactive"}
-                        </span>
+                <span
+                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                    status === "active"
+                      ? "bg-green-100 text-green-800"
+                      : status === "expired"
+                      ? "bg-yellow-100 text-yellow-800"
+                      : "bg-gray-100 text-gray-800"
+                  }`}
+                >
+                  {status.toUpperCase()}
+                </span>
                       </div>
                     </div>
 
-                    {/* show content only when toggled */}
-                    {showVideosPanel && (
-                      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Videos */}
-                        <div>
-                          <h4 className="font-semibold mb-2">Videos</h4>
-                          {sub.videos && sub.videos.length > 0 ? (
-                            <ul className="space-y-3">
-                              {sub.videos.map((v) => (
-                                <li
-                                  key={v.id}
-                                  className="p-3 bg-gray-50 rounded-md border border-gray-100"
-                                >
-                                  <p className="font-medium text-gray-800 mb-1">{v.title}</p>
-
-                                  {v.video_url ? (
-                                    v.video_url.includes("youtube") ? (
-                                      // لو لينك يوتيوب
-                                      <iframe
-                                        className="w-full h-48 rounded-md"
-                                        src={v.video_url.replace("watch?v=", "embed/")}
-                                        title={v.title}
-                                        allowFullScreen
-                                      ></iframe>
-                                    ) : (
-                                      // لو لينك مباشر (mp4 أو غيره)
-                                      <video
-                                        src={v.video_url}
-                                        controls
-                                        className="w-full rounded-md mt-1"
-                                      ></video>
-                                    )
-                                  ) : (
-                                    <p className="text-sm text-gray-500">No video URL available</p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-gray-500">No videos uploaded yet</p>
-                          )}
-                        </div>
-
-                        {/* Materials */}
-                        <div>
-                          <h4 className="font-semibold mb-2">Materials</h4>
-                          {sub.materials && sub.materials.length > 0 ? (
-                            <ul className="space-y-2">
-                              {sub.materials.map((m) => (
-                                <li
-                                  key={m.id}
-                                  className="p-2 bg-gray-50 rounded-md border border-gray-100"
-                                >
-                                  <p className="font-medium text-gray-800 mb-1">{m.title}</p>
-                                  {m.file_url ? (
-                                    <a
-                                      href={m.file_url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-primary-600 text-sm hover:underline"
-                                    >
-                                      Download Material
-                                    </a>
-                                  ) : (
-                                    <p className="text-sm text-gray-500">No file available</p>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-gray-500">No materials available</p>
-                          )}
-                        </div>
-
-                        {/* Exams */}
-                        <div>
-                          <h4 className="font-semibold mb-2">Exams</h4>
-                          {sub.exams && sub.exams.length > 0 ? (
-                            <ul className="space-y-2">
-                              {sub.exams.map((e) => (
-                                <li
-                                  key={e.id}
-                                  className="p-2 bg-gray-50 rounded-md border border-gray-100"
-                                >
-                                  <p className="font-medium text-gray-800 mb-1">{e.title}</p>
-                                  <p className="text-sm text-gray-500">
-                                    Marks: {e.total_marks ?? "N/A"}
-                                  </p>
-                                  <p className="text-xs text-gray-400 mt-1">
-                                    Created: {formatDate(e.created_at)}
-                                  </p>
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-gray-500">No exams available</p>
-                          )}
-                        </div>
+            {/* ✅ هنا الإضافة الجديدة لعرض الفيديوهات */}
+            {showVideosPanel && (
+              <div className="mt-4 space-y-3">
+                <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
+                {sub.videos && sub.videos.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sub.videos.map((v) => (
+                      <div
+                        key={v.id}
+                        className="border rounded-lg p-3 shadow-sm bg-gray-50 hover:shadow-md transition"
+                      >
+                        <p className="font-medium text-gray-900 mb-1">{v.title}</p>
+                        {v.video_url ? (
+                          <iframe
+                            src={v.video_url.replace("watch?v=", "embed/")}
+                            className="w-full h-52 rounded-md"
+                            allowFullScreen
+                            title={v.title}
+                          ></iframe>
+                        ) : (
+                          <p className="text-sm text-gray-500">No video URL</p>
+                        )}
                       </div>
-                    )}
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-gray-500">No videos available for this teacher.</p>
+                )}
+              </div>
+            )}
+            {/* ✅ نهاية الجزء الجديد */}
                   </div>
                 );
               })}
