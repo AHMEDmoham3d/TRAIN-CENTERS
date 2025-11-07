@@ -641,45 +641,41 @@ const StudentDashboard: React.FC = () => {
                       </div>
                     </div>
 
-{/* ✅ هنا الإضافة الجديدة لعرض الفيديوهات */}
 {showVideosPanel && (
-  <div className="mt-4 space-y-4">
-    <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
+  <div className="mt-3 space-y-4">
+    <h4 className="font-semibold text-gray-800 mb-2">
+      Videos:
+    </h4>
     {sub.videos && sub.videos.length > 0 ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sub.videos.map((video) => (
-          <div
-            key={video.id}
-            className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 p-4"
-          >
-            <h5 className="font-semibold text-gray-900 mb-2">
-              {video.title || "Untitled Video"}
-            </h5>
-            {video.video_url ? (
-              <div className="aspect-w-16 aspect-h-9">
-                <iframe
-                  src={video.video_url.replace("watch?v=", "embed/")}
-                  title={video.title || "Video"}
-                  className="w-full h-48 rounded-md"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                ></iframe>
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500">No video URL provided</p>
-            )}
-            {video.description && (
-              <p className="text-sm text-gray-600 mt-2">{video.description}</p>
-            )}
-          </div>
-        ))}
-      </div>
+      sub.videos.map((vid) => (
+        <div
+          key={vid.id}
+          className="p-3 bg-white rounded-md shadow-sm border"
+        >
+          <p className="font-medium text-gray-900 mb-1">
+            {vid.title}
+          </p>
+          {vid.video_url && (
+            <div className="aspect-video w-full">
+              <iframe
+                className="w-full h-64 rounded-md"
+                src={
+                  vid.video_url.replace("watch?v=", "embed/")
+                }
+                title={vid.title}
+                allowFullScreen
+              ></iframe>
+            </div>
+          )}
+        </div>
+      ))
     ) : (
-      <p className="text-gray-500">No videos available for this teacher.</p>
+      <p className="text-gray-500 text-sm">
+        No videos uploaded yet.
+      </p>
     )}
   </div>
 )}
-{/* ✅ نهاية الجزء الجديد */}
                   </div>
                 );
               })}
