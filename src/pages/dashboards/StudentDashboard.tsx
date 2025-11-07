@@ -59,6 +59,7 @@ interface SubscriptionItem {
   start_date: string | null;
   end_date: string | null;
   is_active: boolean;
+  center_wide?: boolean;
   teacher?: {
     id: string;
     full_name: string;
@@ -115,111 +116,87 @@ const StudentDashboard: React.FC = () => {
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
-      if (!user) {
-        // Set mock data to display sections even without user
-        setUpcomingLessons([
-          {
-            id: "1",
-            title: "Advanced Mathematics",
-            time: "10:00 AM - 11:30 AM",
-            teacher: "Dr. Sarah Johnson",
-          },
-          {
-            id: "2",
-            title: "Physics Fundamentals",
-            time: "1:00 PM - 2:30 PM",
-            teacher: "Prof. Michael Chen",
-          },
-        ]);
-        setAiSuggestions([
-          {
-            id: "1",
-            title: "Review Calculus Fundamentals",
-            reason: "Based on your recent quiz performance",
-            icon: "BookOpen",
-          },
-        ]);
-        setCourseProgress([
-          {
-            id: "1",
-            title: "Course 1",
-            progress: 75,
-            totalModules: 12,
-            completedModules: 9,
-          },
-        ]);
-        setLoading(false);
-        return;
-      }
-
-      // get center subdomain from URL params or user or localStorage
-      const currentCenterSubdomain =
-        centerSlug || (user as any).center_subdomain || localStorage.getItem("center_subdomain");
-
-      setCenterSubdomain(currentCenterSubdomain);
-
-      console.log("🔍 Center subdomain:", currentCenterSubdomain);
-      console.log("🔍 User data:", user);
-
-      setLoading(true);
+    const fetchSubscriptionsAndVideos = async () => {
       try {
-        // 1) optionally resolve center id (if you want to scope teachers to the center)
-        let centerId: string | null = null;
-        if (currentCenterSubdomain) {
-          const centerRes = await supabase
-            .from("centers")
-            .select("id")
-            .ilike("subdomain", currentCenterSubdomain)
-            .single();
-          if (!centerRes.error && centerRes.data) {
-            centerId = centerRes.data.id;
-          }
+        if (!user) {
+          // Set mock data to display sections even without user
+          setUpcomingLessons([
+            {
+              id: "1",
+              title: "Advanced Mathematics",
+              time: "10:00 AM - 11:30 AM",
+              teacher: "Dr. Sarah Johnson",
+            },
+            {
+              id: "2",
+              title: "Physics Fundamentals",
+              time: "1:00 PM - 2:30 PM",
+              teacher: "Prof. Michael Chen",
+            },
+          ]);
+          setAiSuggestions([
+            {
+              id: "1",
+              title: "Review Calculus Fundamentals",
+              reason: "Based on your recent quiz performance",
+              icon: "BookOpen",
+            },
+          ]);
+          setCourseProgress([
+            {
+              id: "1",
+              title: "Course 1",
+              progress: 75,
+              totalModules: 12,
+              completedModules: 9,
+            },
+          ]);
+          setLoading(false);
+          return;
         }
 
-        // 2) fetch subscriptions for this student (we fetch all subscriptions and later compute active/expired)
-        const { data: subscriptionsData, error } = await supabase
+        console.log("🔍 Loaded student:", user);
+
+        // 2️⃣ جيب الاشتراكات الخاصة بالطالب من جدول subscriptions مباشرة
+        const { data: subs, error: subError } = await supabase
           .from("subscriptions")
-          .select("*");
+          .select("teacher_id, is_active, end_date, center_wide")
+          .eq("student_id", user.id)
+          .eq("is_active", true);
 
-        console.log("🎯 كل الاشتراكات:", subscriptionsData);
-
-        if (error) {
-          console.error("Error fetching subscriptions:", error);
+        if (subError) {
+          console.error("❌ Subscription fetch error:", subError);
           toast.error("Failed to load subscriptions");
-          setSubscriptionsData([]);
-        } else if (!subscriptionsData || subscriptionsData.length === 0) {
-          setSubscriptionsData([]);
-        } else {
-          // ✅ فلترة الاشتراكات لتشمل فقط النشطة (اللي مازالت سارية)
-          const activeSubs = subscriptionsData.filter(
-            (s: any) => s.is_active && new Date(s.end_date) > new Date()
-          );
+          return;
+        }
 
-          // ✅ لو مفيش اشتراكات نشطة، يظهر نفس الرسالة
-          if (activeSubs.length === 0) {
-            setSubscriptionsData([]);
-            setLoading(false);
-            return;
-          }
+        console.log("✅ Subscriptions found:", subs);
 
-          // ✅ جلب بيانات المحتوى فقط للاشتراكات النشطة
+        // 3️⃣ بناءً على الاشتراكات، جيب الفيديوهات والمواد والامتحانات المناسبة
+        if (subs && subs.length > 0) {
+          const teacherIds = subs.map((s: any) => s.teacher_id);
+
+          // لو الطالب مشترك فى كل المدرسين داخل السنتر
+          const isCenterWide = subs.some((s: any) => s.center_wide === true);
+
+          // جلب بيانات المدرسين أولاً
           const subsWithContent: SubscriptionItem[] = await Promise.all(
-            activeSubs.map(async (s: any) => {
+            subs.map(async (s: any) => {
               const subItem: SubscriptionItem = {
                 id: s.id,
-                student_id: s.student_id,
+                student_id: user.id,
                 teacher_id: s.teacher_id,
                 start_date: s.start_date,
                 end_date: s.end_date,
                 is_active: s.is_active,
+                center_wide: s.center_wide,
                 teacher: null,
                 videos: [],
                 materials: [],
                 exams: [],
               };
 
-              // fetch teacher info (limit by center if centerId is available)
+              // fetch teacher info
               const { data: teacherData, error: teacherError } = await supabase
                 .from("teachers")
                 .select("id, full_name, email, center_id")
@@ -227,78 +204,111 @@ const StudentDashboard: React.FC = () => {
                 .maybeSingle();
 
               if (!teacherError && teacherData) {
-                // optional: ensure teacher belongs to the same center if you require scoping
-                if (!centerId || teacherData.center_id === centerId) {
-                  subItem.teacher = {
-                    id: teacherData.id,
-                    full_name: teacherData.full_name,
-                    email: teacherData.email,
-                  };
-                } else {
-                  // teacher belongs to different center — still attach (you can hide if needed)
-                  subItem.teacher = {
-                    id: teacherData.id,
-                    full_name: teacherData.full_name,
-                    email: teacherData.email,
-                  };
-                }
-              }
-
-              console.log("🔍 Teacher data for subscription:", s.teacher_id, teacherData);
-              console.log("🔍 Center ID:", centerId, "Teacher center_id:", teacherData?.center_id);
-
-              // fetch videos for this teacher
-              const { data: videosData, error: videosError } = await supabase
-                .from("videos")
-                .select("id, teacher_id, title, description, video_url, uploaded_at")
-                .eq("teacher_id", s.teacher_id)
-                .order("uploaded_at", { ascending: false });
-
-              console.log("🎥 videosData:", videosData, "videosError:", videosError);
-
-              if (!videosError && videosData) {
-                subItem.videos = videosData;
-              } else {
-                subItem.videos = [];
-              }
-
-              // fetch materials for this teacher
-              const { data: materialsData, error: materialsError } = await supabase
-                .from("materials")
-                .select("id, teacher_id, title, description, file_url, uploaded_at")
-                .eq("teacher_id", s.teacher_id)
-                .order("uploaded_at", { ascending: false });
-
-              if (!materialsError && materialsData) {
-                subItem.materials = materialsData;
-              } else {
-                subItem.materials = [];
-              }
-
-              // fetch exams created by this teacher
-              const { data: examsData, error: examsError } = await supabase
-                .from("exams")
-                .select("id, teacher_id, title, description, total_marks, created_at")
-                .eq("teacher_id", s.teacher_id)
-                .order("created_at", { ascending: false });
-
-              if (!examsError && examsData) {
-                subItem.exams = examsData;
-              } else {
-                subItem.exams = [];
+                subItem.teacher = {
+                  id: teacherData.id,
+                  full_name: teacherData.full_name,
+                  email: teacherData.email,
+                };
               }
 
               return subItem;
             })
           );
 
-          console.log("🔍 Final subscriptions data:", subsWithContent);
+          // جلب الفيديوهات بناءً على نوع الاشتراك
+          let videosQuery = supabase
+            .from("videos")
+            .select("id, teacher_id, title, description, video_url, uploaded_at");
+
+          if (!isCenterWide) {
+            videosQuery = videosQuery.in("teacher_id", teacherIds);
+          } else {
+            // لو اشتراك شامل السنتر كله → جيب كل فيديوهات المدرسين فى نفس السنتر
+            videosQuery = videosQuery.eq("teacher_id", teacherIds[0]);
+          }
+
+          const { data: videosData, error: videosError } = await videosQuery;
+
+          if (videosError) {
+            console.error("❌ Videos fetch error:", videosError);
+          } else {
+            console.log("🎥 Videos found:", videosData);
+            // توزيع الفيديوهات على الاشتراكات المناسبة
+            if (videosData) {
+              subsWithContent.forEach(sub => {
+                if (isCenterWide) {
+                  sub.videos = videosData;
+                } else {
+                  sub.videos = videosData.filter(video => video.teacher_id === sub.teacher_id);
+                }
+              });
+            }
+          }
+
+          // جلب المواد الدراسية
+          let materialsQuery = supabase
+            .from("materials")
+            .select("id, teacher_id, title, description, file_url, uploaded_at");
+
+          if (!isCenterWide) {
+            materialsQuery = materialsQuery.in("teacher_id", teacherIds);
+          } else {
+            materialsQuery = materialsQuery.eq("teacher_id", teacherIds[0]);
+          }
+
+          const { data: materialsData, error: materialsError } = await materialsQuery;
+
+          if (materialsError) {
+            console.error("❌ Materials fetch error:", materialsError);
+          } else {
+            console.log("📚 Materials found:", materialsData);
+            // توزيع المواد على الاشتراكات المناسبة
+            if (materialsData) {
+              subsWithContent.forEach(sub => {
+                if (isCenterWide) {
+                  sub.materials = materialsData;
+                } else {
+                  sub.materials = materialsData.filter(material => material.teacher_id === sub.teacher_id);
+                }
+              });
+            }
+          }
+
+          // جلب الامتحانات
+          let examsQuery = supabase
+            .from("exams")
+            .select("id, teacher_id, title, description, total_marks, created_at");
+
+          if (!isCenterWide) {
+            examsQuery = examsQuery.in("teacher_id", teacherIds);
+          } else {
+            examsQuery = examsQuery.eq("teacher_id", teacherIds[0]);
+          }
+
+          const { data: examsData, error: examsError } = await examsQuery;
+
+          if (examsError) {
+            console.error("❌ Exams fetch error:", examsError);
+          } else {
+            console.log("📝 Exams found:", examsData);
+            // توزيع الامتحانات على الاشتراكات المناسبة
+            if (examsData) {
+              subsWithContent.forEach(sub => {
+                if (isCenterWide) {
+                  sub.exams = examsData;
+                } else {
+                  sub.exams = examsData.filter(exam => exam.teacher_id === sub.teacher_id);
+                }
+              });
+            }
+          }
+
           setSubscriptionsData(subsWithContent);
+        } else {
+          setSubscriptionsData([]);
         }
 
-        // --- Keep other dashboard content (mocked or lightweight) to preserve original layout ---
-
-        // upcoming lessons: kept as sample/mock until you add a schedule table
+        // --- Keep other dashboard content (mocked or lightweight) ---
         setUpcomingLessons([
           {
             id: "1",
@@ -314,7 +324,7 @@ const StudentDashboard: React.FC = () => {
           },
         ]);
 
-        // pending assignments: derive from exam_results (mock fallback)
+        // pending assignments
         const { data: examResults } = await supabase
           .from("exam_results")
           .select("id, exam_id, submitted_at, score, exams(title, description)")
@@ -335,10 +345,10 @@ const StudentDashboard: React.FC = () => {
           setPendingAssignments([]);
         }
 
-        // course progress: build from subscriptions (simple mock percentages)
-        if (Array.isArray(subscriptionsData) && subscriptionsData.length > 0) {
+        // course progress
+        if (subs && subs.length > 0) {
           setCourseProgress(
-            subscriptionsData.map((s: any, idx: number) => ({
+            subs.map((s: any, idx: number) => ({
               id: s.id,
               title: `Course ${idx + 1}`,
               progress: Math.floor(Math.random() * 100),
@@ -378,8 +388,9 @@ const StudentDashboard: React.FC = () => {
         } else {
           setRecentAchievements([]);
         }
+
       } catch (error) {
-        console.error("Error fetching student dashboard data:", error);
+        console.error("⚠️ Unexpected error:", error);
         toast.error("Failed to load dashboard data");
 
         // Set mock data if fetching fails
@@ -419,7 +430,7 @@ const StudentDashboard: React.FC = () => {
       }
     };
 
-    fetchDashboardData();
+    fetchSubscriptionsAndVideos();
   }, [user]);
 
   useEffect(() => {
@@ -624,6 +635,7 @@ const StudentDashboard: React.FC = () => {
                         </h3>
                         <p className="text-sm text-gray-500">
                           Subscription: {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
+                          {sub.center_wide && " (Center Wide)"}
                         </p>
                       </div>
 
