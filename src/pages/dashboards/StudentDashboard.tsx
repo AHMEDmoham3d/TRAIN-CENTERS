@@ -422,6 +422,13 @@ const StudentDashboard: React.FC = () => {
     fetchDashboardData();
   }, [user]);
 
+  useEffect(() => {
+    console.log("🎥 Debug: Student subscriptions state:", subscriptionsData);
+    if (subscriptionsData.length > 0) {
+      console.log("🎥 Videos inside first subscription:", subscriptionsData[0].videos);
+    }
+  }, [subscriptionsData]);
+
   // compute subscription status (active / expired / inactive)
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
