@@ -178,20 +178,21 @@ const StudentDashboard: React.FC = () => {
         }
 
         // 2) fetch subscriptions for this student (we fetch all subscriptions and later compute active/expired)
-        const { data: subs, error: subsError } = await supabase
+        const { data: subscriptionsData, error } = await supabase
           .from("subscriptions")
-          .select("id, student_id, teacher_id, start_date, end_date, is_active")
-          .eq("student_id", user.id);
+          .select("*");
 
-        if (subsError) {
-          console.error("Error fetching subscriptions:", subsError);
+        console.log("🎯 كل الاشتراكات:", subscriptionsData);
+
+        if (error) {
+          console.error("Error fetching subscriptions:", error);
           toast.error("Failed to load subscriptions");
           setSubscriptionsData([]);
-        } else if (!subs || subs.length === 0) {
+        } else if (!subscriptionsData || subscriptionsData.length === 0) {
           setSubscriptionsData([]);
         } else {
           // ✅ فلترة الاشتراكات لتشمل فقط النشطة (اللي مازالت سارية)
-          const activeSubs = subs.filter(
+          const activeSubs = subscriptionsData.filter(
             (s: any) => s.is_active && new Date(s.end_date) > new Date()
           );
 
@@ -335,9 +336,9 @@ const StudentDashboard: React.FC = () => {
         }
 
         // course progress: build from subscriptions (simple mock percentages)
-        if (Array.isArray(subs) && subs.length > 0) {
+        if (Array.isArray(subscriptionsData) && subscriptionsData.length > 0) {
           setCourseProgress(
-            subs.map((s: any, idx: number) => ({
+            subscriptionsData.map((s: any, idx: number) => ({
               id: s.id,
               title: `Course ${idx + 1}`,
               progress: Math.floor(Math.random() * 100),
