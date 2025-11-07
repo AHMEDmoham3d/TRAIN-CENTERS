@@ -642,36 +642,46 @@ const StudentDashboard: React.FC = () => {
                       </div>
                     </div>
 
-            {/* ✅ هنا الإضافة الجديدة لعرض الفيديوهات */}
-            {showVideosPanel && (
-              <div className="mt-4 space-y-3">
-                <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
-                {sub.videos && sub.videos.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {sub.videos.map((v) => (
-                      <div
-                        key={v.id}
-                        className="border rounded-lg p-3 shadow-sm bg-gray-50 hover:shadow-md transition"
-                      >
-                        <p className="font-medium text-gray-900 mb-1">{v.title}</p>
-                        {v.video_url ? (
-                          <iframe
-                            src={v.video_url.replace("watch?v=", "embed/")}
-                            className="w-full h-52 rounded-md"
-                            allowFullScreen
-                            title={v.title}
-                          ></iframe>
-                        ) : (
-                          <p className="text-sm text-gray-500">No video URL</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No videos available for this teacher.</p>
-                )}
+{/* ✅ هنا الإضافة الجديدة لعرض الفيديوهات */}
+{showVideosPanel && (
+  <div className="mt-4 space-y-4">
+    <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
+
+    {sub.videos && sub.videos.length > 0 ? (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {sub.videos.map((video) => (
+          <div
+            key={video.id}
+            className="p-4 bg-gray-50 border rounded-lg shadow-sm hover:shadow-md transition"
+          >
+            <p className="font-medium text-gray-900 mb-2">
+              {video.title || "Untitled Video"}
+            </p>
+
+            {video.video_url ? (
+              <div className="aspect-w-16 aspect-h-9 mb-2">
+                <iframe
+                  src={video.video_url.replace("watch?v=", "embed/")}
+                  title={video.title}
+                  allowFullScreen
+                  className="w-full h-48 rounded-md"
+                ></iframe>
               </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No video URL available</p>
             )}
+
+            {video.description && (
+              <p className="text-sm text-gray-600 line-clamp-2">{video.description}</p>
+            )}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p className="text-gray-500 text-sm">No videos available for this teacher.</p>
+    )}
+  </div>
+)}
             {/* ✅ نهاية الجزء الجديد */}
                   </div>
                 );
