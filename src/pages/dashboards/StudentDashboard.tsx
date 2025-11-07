@@ -91,7 +91,6 @@ interface SubscriptionItem {
 }
 
 const StudentDashboard: React.FC = () => {
-  const { t } = useTranslation();
   const { user } = useAuthStore();
   const { centerSlug } = useParams<{ centerSlug: string }>();
 
@@ -646,43 +645,41 @@ const StudentDashboard: React.FC = () => {
 {showVideosPanel && (
   <div className="mt-4 space-y-4">
     <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
-
     {sub.videos && sub.videos.length > 0 ? (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {sub.videos.map((video) => (
           <div
             key={video.id}
-            className="p-4 bg-gray-50 border rounded-lg shadow-sm hover:shadow-md transition"
+            className="bg-gray-50 rounded-lg shadow-sm border border-gray-200 p-4"
           >
-            <p className="font-medium text-gray-900 mb-2">
+            <h5 className="font-semibold text-gray-900 mb-2">
               {video.title || "Untitled Video"}
-            </p>
-
+            </h5>
             {video.video_url ? (
-              <div className="aspect-w-16 aspect-h-9 mb-2">
+              <div className="aspect-w-16 aspect-h-9">
                 <iframe
                   src={video.video_url.replace("watch?v=", "embed/")}
-                  title={video.title}
-                  allowFullScreen
+                  title={video.title || "Video"}
                   className="w-full h-48 rounded-md"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
                 ></iframe>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No video URL available</p>
+              <p className="text-sm text-gray-500">No video URL provided</p>
             )}
-
             {video.description && (
-              <p className="text-sm text-gray-600 line-clamp-2">{video.description}</p>
+              <p className="text-sm text-gray-600 mt-2">{video.description}</p>
             )}
           </div>
         ))}
       </div>
     ) : (
-      <p className="text-gray-500 text-sm">No videos available for this teacher.</p>
+      <p className="text-gray-500">No videos available for this teacher.</p>
     )}
   </div>
 )}
-            {/* ✅ نهاية الجزء الجديد */}
+{/* ✅ نهاية الجزء الجديد */}
                   </div>
                 );
               })}
