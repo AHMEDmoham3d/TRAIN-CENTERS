@@ -253,7 +253,7 @@ const StudentDashboard: React.FC = () => {
                 .eq("teacher_id", s.teacher_id)
                 .order("uploaded_at", { ascending: false });
 
-              console.log("🔍 Videos for teacher", s.teacher_id, ":", videosData, videosError);
+              console.log("🎥 videosData:", videosData, "videosError:", videosError);
 
               if (!videosError && videosData) {
                 subItem.videos = videosData;
