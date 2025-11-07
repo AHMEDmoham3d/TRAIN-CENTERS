@@ -627,55 +627,97 @@ const StudentDashboard: React.FC = () => {
                       </div>
 
                       <div className="text-right">
-                <span
-                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                    status === "active"
-                      ? "bg-green-100 text-green-800"
-                      : status === "expired"
-                      ? "bg-yellow-100 text-yellow-800"
-                      : "bg-gray-100 text-gray-800"
-                  }`}
-                >
-                  {status.toUpperCase()}
-                </span>
+                        <span
+                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+                            status === "active"
+                              ? "bg-green-100 text-green-800"
+                              : status === "expired"
+                              ? "bg-yellow-100 text-yellow-800"
+                              : "bg-gray-100 text-gray-800"
+                          }`}
+                        >
+                          {status.toUpperCase()}
+                        </span>
                       </div>
                     </div>
 
-{showVideosPanel && (
-  <div className="mt-3 space-y-4">
-    <h4 className="font-semibold text-gray-800 mb-2">
-      Videos:
-    </h4>
-    {sub.videos && sub.videos.length > 0 ? (
-      sub.videos.map((vid) => (
-        <div
-          key={vid.id}
-          className="p-3 bg-white rounded-md shadow-sm border"
-        >
-          <p className="font-medium text-gray-900 mb-1">
-            {vid.title}
-          </p>
-          {vid.video_url && (
-            <div className="aspect-video w-full">
-              <iframe
-                className="w-full h-64 rounded-md"
-                src={
-                  vid.video_url.replace("watch?v=", "embed/")
-                }
-                title={vid.title}
-                allowFullScreen
-              ></iframe>
-            </div>
-          )}
-        </div>
-      ))
-    ) : (
-      <p className="text-gray-500 text-sm">
-        No videos uploaded yet.
-      </p>
-    )}
-  </div>
-)}
+                    {showVideosPanel && (
+                      <div className="mt-3 space-y-4">
+                        <h4 className="font-semibold text-gray-800 mb-2">Videos:</h4>
+
+                        {sub.videos && sub.videos.length > 0 ? (
+                          sub.videos.map((vid) => (
+                            <div
+                              key={vid.id}
+                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
+                            >
+                              <h5 className="font-medium text-gray-900">{vid.title}</h5>
+                              {vid.description && (
+                                <p className="text-sm text-gray-600 mt-1">{vid.description}</p>
+                              )}
+
+                              {vid.video_url ? (
+                                <div className="mt-3">
+                                  <iframe
+                                    src={vid.video_url.replace("watch?v=", "embed/")}
+                                    title={vid.title}
+                                    className="w-full aspect-video rounded-md"
+                                    allowFullScreen
+                                  ></iframe>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-gray-400 mt-2">
+                                  No video URL available
+                                </p>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500">No videos available</p>
+                        )}
+
+                        <h4 className="font-semibold text-gray-800 mb-2 mt-6">Materials:</h4>
+                        {sub.materials && sub.materials.length > 0 ? (
+                          sub.materials.map((mat) => (
+                            <div
+                              key={mat.id}
+                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
+                            >
+                              <p className="font-medium text-gray-900">{mat.title}</p>
+                              {mat.file_url && (
+                                <a
+                                  href={mat.file_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-primary-600 hover:text-primary-700 mt-1 inline-block"
+                                >
+                                  View Material
+                                </a>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500">No materials available</p>
+                        )}
+
+                        <h4 className="font-semibold text-gray-800 mb-2 mt-6">Exams:</h4>
+                        {sub.exams && sub.exams.length > 0 ? (
+                          sub.exams.map((exam) => (
+                            <div
+                              key={exam.id}
+                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
+                            >
+                              <p className="font-medium text-gray-900">{exam.title}</p>
+                              {exam.description && (
+                                <p className="text-sm text-gray-600 mt-1">{exam.description}</p>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <p className="text-sm text-gray-500">No exams available</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -753,3 +795,5 @@ const StudentDashboard: React.FC = () => {
     </DashboardLayout>
   );
 };
+
+export default StudentDashboard;
