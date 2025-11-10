@@ -182,7 +182,6 @@
 //   );
 // };
 // import React, { useState, useEffect } from "react";
-
 import { useNavigate, useParams } from "react-router-dom";
 import { Layers, Loader2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
@@ -258,6 +257,12 @@ const Login: React.FC = () => {
         setErrorMsg("⚠️ Authentication failed.");
         setLoading(false);
         return;
+      }
+
+      // ✅ حفظ التوكن بعد تسجيل الدخول الناجح
+      if (signInData.session?.access_token) {
+        localStorage.setItem("access_token", signInData.session.access_token);
+        console.log("🔐 Saved user access_token");
       }
 
       // 🔹 جلب بيانات المستخدم
