@@ -305,6 +305,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAuthStore } from "./store/authStore";
 import { supabase } from "./lib/supabase";
+import { restoreSession } from "./lib/supabase";
 
 // ✅ الصفحات
 import Login from "./pages/auth/Login";
@@ -394,6 +395,10 @@ function App() {
   const { i18n } = useTranslation();
   const { initialize } = useAuthStore();
   const location = useLocation();
+
+  useEffect(() => {
+    restoreSession();
+  }, []);
 
   useEffect(() => {
     initialize();
