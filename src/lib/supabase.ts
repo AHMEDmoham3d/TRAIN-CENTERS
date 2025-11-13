@@ -1,11 +1,14 @@
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+// ✅ اكتب القيم مباشرة بدل import.meta.env
+const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co"
+const supabaseAnonKey =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpcXpjZmJjc2Zscml5Ynl2dHVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3NTczMDQsImV4cCI6MjA3NTMzMzMwNH0.J9kVaVrOpv83CQs6Q9N7TJQ34HGBbPR_1Vf_XaycMT0"
 
 // ✅ استعادة التوكن من localStorage لو موجود
 const storedToken = localStorage.getItem("access_token")
 
+// ✅ إنشاء عميل Supabase
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     headers: storedToken ? { Authorization: `Bearer ${storedToken}` } : {},
@@ -23,5 +26,7 @@ export async function restoreSession() {
   if (error) console.error("❌ Error restoring session:", error)
   if (data.session) {
     console.log("🔑 Supabase client session restored:", data.session.user.email)
+  } else {
+    console.warn("⚠️ No active Supabase session found.")
   }
 }
