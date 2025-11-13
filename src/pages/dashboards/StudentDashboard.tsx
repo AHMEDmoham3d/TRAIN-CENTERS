@@ -91,22 +91,6 @@ interface SubscriptionItem {
   }>;
 }
 
-// Function to convert YouTube URLs to embed format
-function getEmbedUrl(url: string | null): string {
-  if (!url) return "";
-  // لو اللينك قصير من youtu.be
-  if (url.includes("youtu.be")) {
-    const videoId = url.split("youtu.be/")[1].split("?")[0];
-    return `https://www.youtube.com/embed/${videoId}`;
-  }
-  // لو اللينك فيه watch?v=
-  if (url.includes("watch?v=")) {
-    const videoId = url.split("watch?v=")[1].split("&")[0];
-    return `https://www.youtube.com/embed/${videoId}`;
-  }
-  return url;
-}
-
 const StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { centerSlug } = useParams<{ centerSlug: string }>();
@@ -688,13 +672,10 @@ const StudentDashboard: React.FC = () => {
                               {vid.video_url ? (
                                 <div className="mt-3">
                                   <iframe
-                                    src={getEmbedUrl(vid.video_url)}
+                                    src={vid.video_url.replace("watch?v=", "embed/")}
                                     title={vid.title}
-                                    width="100%"
-                                    height="315"
-                                    frameBorder="0"
+                                    className="w-full aspect-video rounded-md"
                                     allowFullScreen
-                                    className="rounded-md"
                                   ></iframe>
                                 </div>
                               ) : (
