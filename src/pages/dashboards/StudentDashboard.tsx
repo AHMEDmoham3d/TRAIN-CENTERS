@@ -642,6 +642,8 @@ const StudentDashboard: React.FC = () => {
             <div className="space-y-4">
               {subscriptionsData.map((sub) => {
                 const status = computeSubscriptionStatus(sub);
+                const isExpired = status === "expired";
+
                 return (
                   <div key={sub.id} className="border rounded-md p-4">
                     <div className="flex justify-between items-start">
@@ -653,100 +655,46 @@ const StudentDashboard: React.FC = () => {
                           Subscription: {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
                           {sub.center_wide && " (Center Wide)"}
                         </p>
-                      </div>
-
-                      <div className="text-right">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                            status === "active"
-                              ? "bg-green-100 text-green-800"
-                              : status === "expired"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
+                        <p
+                          className={`text-sm font-medium ${
+                            status === "expired"
+                              ? "text-red-600"
+                              : status === "inactive"
+                              ? "text-gray-500"
+                              : "text-green-600"
                           }`}
                         >
-                          {status.toUpperCase()}
-                        </span>
+                          Status: {status}
+                        </p>
                       </div>
                     </div>
 
                     {showVideosPanel && (
-                      <div className="mt-3 space-y-4">
-                        <h4 className="font-semibold text-gray-800 mb-2">Videos:</h4>
+                      <div className="mt-4">
+                        <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
 
-                        {sub.videos && sub.videos.length > 0 ? (
-                          sub.videos.map((vid) => (
-                            <div
-                              key={vid.id}
-                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
-                            >
-                              <h5 className="font-medium text-gray-900">{vid.title}</h5>
-                              {vid.description && (
-                                <p className="text-sm text-gray-600 mt-1">{vid.description}</p>
-                              )}
-
-                              {vid.video_url ? (
-                                <div className="mt-3">
+                        {isExpired ? (
+                          <p className="text-red-600 font-medium">
+                            ⚠️ Your subscription has expired. Please renew to access videos.
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {sub.videos.length > 0 ? (
+                              sub.videos.map((v) => (
+                                <div key={v.id} className="border rounded p-3 bg-gray-50">
+                                  <p className="font-medium">{v.title}</p>
                                   <iframe
-                                    src={getEmbedUrl(vid.video_url)}
-                                    title={vid.title}
-                                    width="100%"
-                                    height="315"
-                                    frameBorder="0"
+                                    src={getEmbedUrl(v.video_url)}
+                                    title={v.title}
+                                    className="w-full h-60 rounded mt-2"
                                     allowFullScreen
-                                    className="rounded-md"
                                   ></iframe>
                                 </div>
-                              ) : (
-                                <p className="text-sm text-gray-400 mt-2">
-                                  No video URL available
-                                </p>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-gray-500">No videos available</p>
-                        )}
-
-                        <h4 className="font-semibold text-gray-800 mb-2 mt-6">Materials:</h4>
-                        {sub.materials && sub.materials.length > 0 ? (
-                          sub.materials.map((mat) => (
-                            <div
-                              key={mat.id}
-                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
-                            >
-                              <p className="font-medium text-gray-900">{mat.title}</p>
-                              {mat.file_url && (
-                                <a
-                                  href={mat.file_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-primary-600 hover:text-primary-700 mt-1 inline-block"
-                                >
-                                  View Material
-                                </a>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-gray-500">No materials available</p>
-                        )}
-
-                        <h4 className="font-semibold text-gray-800 mb-2 mt-6">Exams:</h4>
-                        {sub.exams && sub.exams.length > 0 ? (
-                          sub.exams.map((exam) => (
-                            <div
-                              key={exam.id}
-                              className="p-3 bg-gray-50 rounded-md border border-gray-200 shadow-sm"
-                            >
-                              <p className="font-medium text-gray-900">{exam.title}</p>
-                              {exam.description && (
-                                <p className="text-sm text-gray-600 mt-1">{exam.description}</p>
-                              )}
-                            </div>
-                          ))
-                        ) : (
-                          <p className="text-sm text-gray-500">No exams available</p>
+                              ))
+                            ) : (
+                              <p className="text-gray-500">No videos available</p>
+                            )}
+                          </div>
                         )}
                       </div>
                     )}
