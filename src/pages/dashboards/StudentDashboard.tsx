@@ -8,6 +8,8 @@ import {
   Award,
   TrendingUp,
   ExternalLink,
+  Clock,
+  Download,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -88,6 +90,8 @@ interface SubscriptionItem {
     description?: string | null;
     total_marks?: number | null;
     created_at?: string | null;
+    duration_minutes?: number | null;
+    questions_count?: number | null;
   }>;
 }
 
@@ -293,7 +297,7 @@ const StudentDashboard: React.FC = () => {
           // جلب الامتحانات
           let examsQuery = supabase
             .from("exams")
-            .select("id, teacher_id, title, description, total_marks, created_at");
+            .select("id, teacher_id, title, description, total_marks, created_at, duration_minutes, questions_count");
 
           if (!isCenterWide) {
             examsQuery = examsQuery.in("teacher_id", teacherIds);
@@ -453,6 +457,7 @@ const StudentDashboard: React.FC = () => {
     console.log("🎥 Debug: Student subscriptions state:", subscriptionsData);
     if (subscriptionsData.length > 0) {
       console.log("🎥 Videos inside first subscription:", subscriptionsData[0].videos);
+      console.log("📝 Exams inside first subscription:", subscriptionsData[0].exams);
     }
   }, [subscriptionsData]);
 
@@ -472,6 +477,37 @@ const StudentDashboard: React.FC = () => {
     } catch {
       return d;
     }
+  };
+
+  const formatDateTime = (d?: string | null) => {
+    if (!d) return "-";
+    try {
+      return new Date(d).toLocaleString();
+    } catch {
+      return d;
+    }
+  };
+
+  const handleStartExam = (examId: string) => {
+    // هنا يمكنك توجيه الطالب لصفحة الامتحان
+    toast.success(`Starting exam ${examId}`);
+    // navigate(`/exam/${examId}`);
+  };
+
+  const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
+    if (!fileUrl) {
+      toast.error("No file available for download");
+      return;
+    }
+    // إنشاء لينك تحميل للملف
+    const link = document.createElement('a');
+    link.href = fileUrl;
+    link.download = title;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Downloading ${title}`);
   };
 
   if (loading) {
@@ -670,32 +706,132 @@ const StudentDashboard: React.FC = () => {
                     </div>
 
                     {showVideosPanel && (
-                      <div className="mt-4">
-                        <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
+                      <div className="mt-4 space-y-6">
+                        {/* Videos Section */}
+                        <div>
+                          <h4 className="font-semibold text-gray-800 mb-2">Videos</h4>
 
-                        {isExpired ? (
-                          <p className="text-red-600 font-medium">
-                            ⚠️ Your subscription has expired. Please renew to access videos.
-                          </p>
-                        ) : (
-                          <div className="space-y-3">
-                            {sub.videos.length > 0 ? (
-                              sub.videos.map((v) => (
-                                <div key={v.id} className="border rounded p-3 bg-gray-50">
-                                  <p className="font-medium">{v.title}</p>
-                                  <iframe
-                                    src={getEmbedUrl(v.video_url)}
-                                    title={v.title}
-                                    className="w-full h-60 rounded mt-2"
-                                    allowFullScreen
-                                  ></iframe>
-                                </div>
-                              ))
-                            ) : (
-                              <p className="text-gray-500">No videos available</p>
-                            )}
-                          </div>
-                        )}
+                          {isExpired ? (
+                            <p className="text-red-600 font-medium">
+                              ⚠️ Your subscription has expired. Please renew to access videos.
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              {sub.videos.length > 0 ? (
+                                sub.videos.map((v) => (
+                                  <div key={v.id} className="border rounded p-3 bg-gray-50">
+                                    <p className="font-medium">{v.title}</p>
+                                    {v.description && (
+                                      <p className="text-sm text-gray-600 mt-1">{v.description}</p>
+                                    )}
+                                    <iframe
+                                      src={getEmbedUrl(v.video_url)}
+                                      title={v.title}
+                                      className="w-full h-60 rounded mt-2"
+                                      allowFullScreen
+                                    ></iframe>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      Uploaded: {formatDateTime(v.uploaded_at)}
+                                    </p>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-gray-500">No videos available</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Materials Section */}
+                        <div>
+                          <h4 className="font-semibold text-gray-800 mb-2">Study Materials</h4>
+
+                          {isExpired ? (
+                            <p className="text-red-600 font-medium">
+                              ⚠️ Your subscription has expired. Please renew to access materials.
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              {sub.materials.length > 0 ? (
+                                sub.materials.map((material) => (
+                                  <div key={material.id} className="border rounded p-3 bg-gray-50 flex justify-between items-center">
+                                    <div>
+                                      <p className="font-medium">{material.title}</p>
+                                      {material.description && (
+                                        <p className="text-sm text-gray-600 mt-1">{material.description}</p>
+                                      )}
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Uploaded: {formatDateTime(material.uploaded_at)}
+                                      </p>
+                                    </div>
+                                    <button
+                                      onClick={() => handleDownloadMaterial(material.file_url, material.title)}
+                                      className="flex items-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                                    >
+                                      <Download className="w-4 h-4 mr-1" />
+                                      Download
+                                    </button>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-gray-500">No study materials available</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Exams Section */}
+                        <div>
+                          <h4 className="font-semibold text-gray-800 mb-2">Exams</h4>
+
+                          {isExpired ? (
+                            <p className="text-red-600 font-medium">
+                              ⚠️ Your subscription has expired. Please renew to access exams.
+                            </p>
+                          ) : (
+                            <div className="space-y-3">
+                              {sub.exams.length > 0 ? (
+                                sub.exams.map((exam) => (
+                                  <div key={exam.id} className="border rounded p-3 bg-gray-50">
+                                    <div className="flex justify-between items-start">
+                                      <div className="flex-1">
+                                        <p className="font-medium text-lg">{exam.title}</p>
+                                        {exam.description && (
+                                          <p className="text-sm text-gray-600 mt-1">{exam.description}</p>
+                                        )}
+                                        <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500">
+                                          {exam.total_marks && (
+                                            <span>Total Marks: {exam.total_marks}</span>
+                                          )}
+                                          {exam.duration_minutes && (
+                                            <span className="flex items-center">
+                                              <Clock className="w-4 h-4 mr-1" />
+                                              {exam.duration_minutes} minutes
+                                            </span>
+                                          )}
+                                          {exam.questions_count && (
+                                            <span>Questions: {exam.questions_count}</span>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-2">
+                                          Created: {formatDateTime(exam.created_at)}
+                                        </p>
+                                      </div>
+                                      <button
+                                        onClick={() => handleStartExam(exam.id)}
+                                        className="ml-4 px-4 py-2 bg-secondary-600 text-white rounded-md hover:bg-secondary-700 whitespace-nowrap"
+                                      >
+                                        Start Exam
+                                      </button>
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <p className="text-gray-500">No exams available</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
