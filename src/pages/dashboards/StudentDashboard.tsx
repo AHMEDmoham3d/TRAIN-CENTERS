@@ -145,6 +145,9 @@ const StudentDashboard: React.FC = () => {
         if (!error && centerData) {
           setCenterId(centerData.id);
           setCenterSubdomain(centerData.subdomain || centerData.name);
+          console.log("🏫 Center info loaded:", centerData);
+        } else {
+          console.error("❌ Error fetching center info:", error);
         }
       } catch (error) {
         console.error("Error fetching center info:", error);
@@ -214,18 +217,24 @@ const StudentDashboard: React.FC = () => {
         // 2️⃣ إذا كان هناك اشتراكات، جلب المحتوى المرتبط
         if (subs && subs.length > 0) {
           const teacherIds = subs.map((s: any) => s.teacher_id);
+          const uniqueTeacherIds = [...new Set(teacherIds)]; // إزالة التكرارات
           
+          console.log("👨‍🏫 Teacher IDs from subscriptions:", uniqueTeacherIds);
+
           // التحقق إذا كان هناك اشتراك شامل للسنتر
           const isCenterWide = subs.some((s: any) => s.center_wide === true);
+          console.log("🎯 Is center-wide subscription:", isCenterWide);
 
           // جلب بيانات المدرسين أولاً
           const { data: teachersData, error: teachersError } = await supabase
             .from("teachers")
             .select("id, full_name, email, center_id")
-            .in("id", teacherIds);
+            .in("id", uniqueTeacherIds);
 
           if (teachersError) {
             console.error("❌ Teachers fetch error:", teachersError);
+          } else {
+            console.log("👨‍🏫 Teachers data:", teachersData);
           }
 
           // إنشاء كائن لربط بيانات المدرسين بسرعة
@@ -249,10 +258,12 @@ const StudentDashboard: React.FC = () => {
             exams: [],
           }));
 
+          console.log("📦 Initial subscriptions with content:", subsWithContent);
+
           // 3️⃣ جلب المحتوى بناءً على نوع الاشتراك
           if (isCenterWide && centerId) {
             // إذا كان اشتراك شامل، جلب كل محتوى المدرسين في هذا السنتر
-            console.log("🎯 Center-wide subscription detected, fetching all center content");
+            console.log("🎯 Center-wide subscription detected, fetching all center content for center:", centerId);
 
             // جلب كل المدرسين في السنتر
             const { data: centerTeachers, error: centerTeachersError } = await supabase
@@ -260,64 +271,81 @@ const StudentDashboard: React.FC = () => {
               .select("id")
               .eq("center_id", centerId);
 
-            if (!centerTeachersError && centerTeachers) {
-              const centerTeacherIds = centerTeachers.map(t => t.id);
+            if (centerTeachersError) {
+              console.error("❌ Center teachers fetch error:", centerTeachersError);
+            } else {
+              console.log("👨‍🏫 All teachers in center:", centerTeachers);
+              
+              if (centerTeachers && centerTeachers.length > 0) {
+                const centerTeacherIds = centerTeachers.map(t => t.id);
+                console.log("🎯 Center teacher IDs:", centerTeacherIds);
 
-              // جلب الفيديوهات
-              const { data: videosData, error: videosError } = await supabase
-                .from("videos")
-                .select("id, teacher_id, title, description, video_url, uploaded_at")
-                .in("teacher_id", centerTeacherIds);
+                // جلب الفيديوهات
+                const { data: videosData, error: videosError } = await supabase
+                  .from("videos")
+                  .select("id, teacher_id, title, description, video_url, uploaded_at")
+                  .in("teacher_id", centerTeacherIds);
 
-              if (!videosError && videosData) {
-                console.log("🎥 All center videos found:", videosData.length);
-                // إضافة الفيديوهات لجميع الاشتراكات
-                subsWithContent.forEach(sub => {
-                  sub.videos = videosData;
-                });
-              }
+                if (videosError) {
+                  console.error("❌ Videos fetch error:", videosError);
+                } else {
+                  console.log("🎥 All center videos found:", videosData);
+                  // إضافة الفيديوهات لجميع الاشتراكات
+                  subsWithContent.forEach(sub => {
+                    sub.videos = videosData || [];
+                  });
+                }
 
-              // جلب المواد الدراسية
-              const { data: materialsData, error: materialsError } = await supabase
-                .from("materials")
-                .select("id, teacher_id, title, description, file_url, uploaded_at")
-                .in("teacher_id", centerTeacherIds);
+                // جلب المواد الدراسية
+                const { data: materialsData, error: materialsError } = await supabase
+                  .from("materials")
+                  .select("id, teacher_id, title, description, file_url, uploaded_at")
+                  .in("teacher_id", centerTeacherIds);
 
-              if (!materialsError && materialsData) {
-                console.log("📚 All center materials found:", materialsData.length);
-                subsWithContent.forEach(sub => {
-                  sub.materials = materialsData;
-                });
-              }
+                if (materialsError) {
+                  console.error("❌ Materials fetch error:", materialsError);
+                } else {
+                  console.log("📚 All center materials found:", materialsData);
+                  subsWithContent.forEach(sub => {
+                    sub.materials = materialsData || [];
+                  });
+                }
 
-              // جلب الامتحانات
-              const { data: examsData, error: examsError } = await supabase
-                .from("exams")
-                .select("id, teacher_id, title, description, total_marks, created_at, duration_minutes, questions_count")
-                .in("teacher_id", centerTeacherIds);
+                // جلب الامتحانات
+                const { data: examsData, error: examsError } = await supabase
+                  .from("exams")
+                  .select("*")
+                  .in("teacher_id", centerTeacherIds);
 
-              if (!examsError && examsData) {
-                console.log("📝 All center exams found:", examsData.length);
-                subsWithContent.forEach(sub => {
-                  sub.exams = examsData;
-                });
+                console.log("📝 DEBUG: Exams fetched from DB:", examsData, examsError);
+
+                if (examsError) {
+                  console.error("❌ Exams fetch error:", examsError);
+                } else {
+                  console.log("📝 All center exams found:", examsData);
+                  subsWithContent.forEach(sub => {
+                    sub.exams = examsData || [];
+                  });
+                }
               }
             }
           } else {
             // إذا كان اشتراك عادي، جلب محتوى المدرسين المحددين فقط
-            console.log("🎯 Regular subscription, fetching specific teachers content");
+            console.log("🎯 Regular subscription, fetching specific teachers content for teachers:", uniqueTeacherIds);
 
             // جلب الفيديوهات
             const { data: videosData, error: videosError } = await supabase
               .from("videos")
               .select("id, teacher_id, title, description, video_url, uploaded_at")
-              .in("teacher_id", teacherIds);
+              .in("teacher_id", uniqueTeacherIds);
 
-            if (!videosError && videosData) {
-              console.log("🎥 Teacher-specific videos found:", videosData.length);
+            if (videosError) {
+              console.error("❌ Videos fetch error:", videosError);
+            } else {
+              console.log("🎥 Teacher-specific videos found:", videosData);
               // توزيع الفيديوهات على الاشتراكات المناسبة
               subsWithContent.forEach(sub => {
-                sub.videos = videosData.filter(video => video.teacher_id === sub.teacher_id);
+                sub.videos = videosData ? videosData.filter(video => video.teacher_id === sub.teacher_id) : [];
               });
             }
 
@@ -325,32 +353,40 @@ const StudentDashboard: React.FC = () => {
             const { data: materialsData, error: materialsError } = await supabase
               .from("materials")
               .select("id, teacher_id, title, description, file_url, uploaded_at")
-              .in("teacher_id", teacherIds);
+              .in("teacher_id", uniqueTeacherIds);
 
-            if (!materialsError && materialsData) {
-              console.log("📚 Teacher-specific materials found:", materialsData.length);
+            if (materialsError) {
+              console.error("❌ Materials fetch error:", materialsError);
+            } else {
+              console.log("📚 Teacher-specific materials found:", materialsData);
               subsWithContent.forEach(sub => {
-                sub.materials = materialsData.filter(material => material.teacher_id === sub.teacher_id);
+                sub.materials = materialsData ? materialsData.filter(material => material.teacher_id === sub.teacher_id) : [];
               });
             }
 
             // جلب الامتحانات
             const { data: examsData, error: examsError } = await supabase
               .from("exams")
-              .select("id, teacher_id, title, description, total_marks, created_at, duration_minutes, questions_count")
-              .in("teacher_id", teacherIds);
+              .select("*")
+              .in("teacher_id", uniqueTeacherIds);
 
-            if (!examsError && examsData) {
-              console.log("📝 Teacher-specific exams found:", examsData.length);
+            console.log("📝 DEBUG: Exams fetched from DB:", examsData, examsError);
+
+            if (examsError) {
+              console.error("❌ Exams fetch error:", examsError);
+            } else {
+              console.log("📝 Teacher-specific exams found:", examsData);
+              // ربط الامتحانات بالاشتراكات المناسبة
               subsWithContent.forEach(sub => {
-                sub.exams = examsData.filter(exam => exam.teacher_id === sub.teacher_id);
+                sub.exams = examsData ? examsData.filter(e => e.teacher_id === sub.teacher_id) : [];
               });
             }
           }
 
           setSubscriptionsData(subsWithContent);
-          console.log("✅ Final subscriptions data:", subsWithContent);
+          console.log("✅ Final subscriptions data with content:", subsWithContent);
         } else {
+          console.log("📭 No active subscriptions found");
           setSubscriptionsData([]);
         }
 
@@ -483,6 +519,7 @@ const StudentDashboard: React.FC = () => {
     console.log("🎥 Debug: Student subscriptions state:", subscriptionsData);
     if (subscriptionsData.length > 0) {
       console.log("🎥 Videos inside first subscription:", subscriptionsData[0].videos);
+      console.log("📚 Materials inside first subscription:", subscriptionsData[0].materials);
       console.log("📝 Exams inside first subscription:", subscriptionsData[0].exams);
       
       // حساب إجمالي المحتوى المتاح
