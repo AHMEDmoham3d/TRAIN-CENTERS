@@ -135,12 +135,12 @@ const StudentDashboard: React.FC = () => {
       if (!centerSlug) return;
 
       try {
-        console.log("🔍 Fetching center info for slug:", centerSlug);
-        // جلب معلومات السنتر بناءً على الـ slug
+        console.log("🔍 Fetching center info for subdomain:", centerSlug);
+        // جلب معلومات السنتر بناءً على الـ subdomain بدلاً من slug
         const { data: centerData, error } = await supabase
           .from("centers")
           .select("id, name, subdomain")
-          .eq("slug", centerSlug)
+          .eq("subdomain", centerSlug)
           .single();
 
         if (error) {
@@ -153,7 +153,7 @@ const StudentDashboard: React.FC = () => {
           setCenterSubdomain(centerData.subdomain || centerData.name);
           console.log("🏫 Center info loaded:", centerData);
         } else {
-          console.log("❌ No center found with slug:", centerSlug);
+          console.log("❌ No center found with subdomain:", centerSlug);
         }
       } catch (error) {
         console.error("🚨 Unexpected error fetching center info:", error);
