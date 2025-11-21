@@ -330,25 +330,14 @@ const StudentDashboard: React.FC = () => {
                 const { data: examsData, error: examsError } = await supabase
                   .from("exams")
                   .select("*")
-                  .in("teacher_id", centerTeacherIds);
+                  .in("teacher_id", teacherIds);
 
-                console.log("📝 DEBUG: Exams query details:", {
-                  table: "exams",
-                  teacher_ids: centerTeacherIds,
-                  result: examsData,
-                  error: examsError
-                });
+                console.log("DEBUG exams data:", examsData, examsError);
 
                 if (examsError) {
                   console.error("❌ Exams fetch error:", examsError);
-                  console.error("❌ Exams error details:", {
-                    message: examsError.message,
-                    details: examsError.details,
-                    hint: examsError.hint
-                  });
                 } else {
                   console.log("✅ Center exams found:", examsData?.length || 0);
-                  console.log("📝 Center exams data:", examsData);
                   subsWithContent.forEach(sub => {
                     sub.exams = examsData || [];
                   });
@@ -399,29 +388,17 @@ const StudentDashboard: React.FC = () => {
             const { data: examsData, error: examsError } = await supabase
               .from("exams")
               .select("*")
-              .in("teacher_id", uniqueTeacherIds);
+              .in("teacher_id", teacherIds);
 
-            console.log("📝 DEBUG: Exams query details:", {
-              table: "exams",
-              teacher_ids: uniqueTeacherIds,
-              result: examsData,
-              error: examsError
-            });
+            console.log("DEBUG exams data:", examsData, examsError);
 
             if (examsError) {
               console.error("❌ Exams fetch error:", examsError);
-              console.error("❌ Exams error details:", {
-                message: examsError.message,
-                details: examsError.details,
-                hint: examsError.hint
-              });
             } else {
               console.log("✅ Teacher-specific exams found:", examsData?.length || 0);
-              console.log("📝 Teacher-specific exams data:", examsData);
               // ربط الامتحانات بالاشتراكات المناسبة
               subsWithContent.forEach(sub => {
                 sub.exams = examsData ? examsData.filter(e => e.teacher_id === sub.teacher_id) : [];
-                console.log(`📝 Linked ${sub.exams.length} exams to teacher ${sub.teacher_id}`);
               });
             }
           }
