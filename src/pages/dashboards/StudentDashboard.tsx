@@ -66,6 +66,8 @@ interface SubscriptionItem {
     id: string;
     full_name: string;
     email?: string | null;
+    subject?: string | null;
+    image_url?: string | null;
     center_id?: string | null;
   } | null;
   videos: Array<{
@@ -237,7 +239,7 @@ const StudentDashboard: React.FC = () => {
           console.log("👨‍🏫 Step 2: Fetching teachers data");
           const { data: teachersData, error: teachersError } = await supabase
             .from("teachers")
-            .select("id, full_name, email, center_id")
+            .select("id, full_name, email, subject, image_url, center_id")
             .in("id", uniqueTeacherIds);
 
           if (teachersError) {
@@ -819,6 +821,7 @@ const StudentDashboard: React.FC = () => {
                           {sub.teacher?.full_name || "Unknown Teacher"}
                         </h3>
                         <p className="text-sm text-gray-500">
+                          {sub.teacher?.subject && `Subject: ${sub.teacher.subject} • `}
                           Subscription: {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
                           {sub.center_wide && " (Center Wide)"}
                         </p>
