@@ -95,6 +95,15 @@ interface SubscriptionItem {
     created_at?: string | null;
     duration_minutes?: number | null;
     questions_count?: number | null;
+    exam_questions?: Array<{
+      id: string;
+      question_text: string;
+      exam_options: Array<{
+        id: string;
+        option_text: string;
+        is_correct: boolean;
+      }>;
+    }>;
   }>;
 }
 
@@ -325,12 +334,23 @@ const StudentDashboard: React.FC = () => {
                   });
                 }
 
-                // جلب الامتحانات
-                console.log("📝 Fetching exams for center teachers");
+                // جلب الامتحانات مع الأسئلة والخيارات
+                console.log("📝 Fetching exams with questions and options for center teachers");
                 const { data: examsData, error: examsError } = await supabase
                   .from("exams")
-                  .select("*")
-                  .in("teacher_id", teacherIds);
+                  .select(`
+                    *,
+                    exam_questions (
+                      id,
+                      question_text,
+                      exam_options (
+                        id,
+                        option_text,
+                        is_correct
+                      )
+                    )
+                  `)
+                  .in("teacher_id", centerTeacherIds);
 
                 console.log("DEBUG exams data:", examsData, examsError);
 
@@ -383,12 +403,23 @@ const StudentDashboard: React.FC = () => {
               });
             }
 
-            // جلب الامتحانات
-            console.log("📝 Fetching exams for specific teachers");
+            // جلب الامتحانات مع الأسئلة والخيارات
+            console.log("📝 Fetching exams with questions and options for specific teachers");
             const { data: examsData, error: examsError } = await supabase
               .from("exams")
-              .select("*")
-              .in("teacher_id", teacherIds);
+              .select(`
+                *,
+                exam_questions (
+                  id,
+                  question_text,
+                  exam_options (
+                    id,
+                    option_text,
+                    is_correct
+                  )
+                )
+              `)
+              .in("teacher_id", uniqueTeacherIds);
 
             console.log("DEBUG exams data:", examsData, examsError);
 
@@ -558,6 +589,16 @@ const StudentDashboard: React.FC = () => {
         
         if (sub.exams.length > 0) {
           console.log("   📝 Exam details:", sub.exams);
+          sub.exams.forEach((exam, examIndex) => {
+            console.log(`      Exam ${examIndex + 1}: ${exam.title}`);
+            console.log(`        Questions: ${exam.exam_questions?.length || 0}`);
+            if (exam.exam_questions) {
+              exam.exam_questions.forEach((q, qIndex) => {
+                console.log(`        Question ${qIndex + 1}: ${q.question_text}`);
+                console.log(`          Options: ${q.exam_options?.length || 0}`);
+              });
+            }
+          });
         }
       });
       
@@ -930,6 +971,9 @@ const StudentDashboard: React.FC = () => {
                                           )}
                                           {exam.questions_count && (
                                             <span>Questions: {exam.questions_count}</span>
+                                          )}
+                                          {exam.exam_questions && (
+                                            <span>Loaded Questions: {exam.exam_questions.length}</span>
                                           )}
                                         </div>
                                         <p className="text-xs text-gray-500 mt-2">
