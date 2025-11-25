@@ -10,6 +10,9 @@ import {
   ExternalLink,
   Clock,
   Download,
+  Play,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -53,39 +56,13 @@ interface RecentAchievement {
   date: string;
 }
 
-/** Subscription + teacher content types */
-interface SubscriptionItem {
+interface VideoWithExams {
   id: string;
-  student_id: string;
   teacher_id: string;
-  start_date: string | null;
-  end_date: string | null;
-  is_active: boolean;
-  center_wide?: boolean;
-  teacher?: {
-    id: string;
-    full_name: string;
-    email?: string | null;
-    subject?: string | null;
-    image_url?: string | null;
-    center_id?: string | null;
-  } | null;
-  videos: Array<{
-    id: string;
-    teacher_id: string;
-    title: string;
-    description?: string | null;
-    video_url?: string | null;
-    uploaded_at?: string | null;
-  }>;
-  materials: Array<{
-    id: string;
-    teacher_id: string;
-    title: string;
-    description?: string | null;
-    file_url?: string | null;
-    uploaded_at?: string | null;
-  }>;
+  title: string;
+  description?: string | null;
+  video_url?: string | null;
+  uploaded_at?: string | null;
   exams: Array<{
     id: string;
     teacher_id: string;
@@ -107,15 +84,41 @@ interface SubscriptionItem {
   }>;
 }
 
+/** Subscription + teacher content types */
+interface SubscriptionItem {
+  id: string;
+  student_id: string;
+  teacher_id: string;
+  start_date: string | null;
+  end_date: string | null;
+  is_active: boolean;
+  center_wide?: boolean;
+  teacher?: {
+    id: string;
+    full_name: string;
+    email?: string | null;
+    subject?: string | null;
+    image_url?: string | null;
+    center_id?: string | null;
+  } | null;
+  videosWithExams: VideoWithExams[];
+  materials: Array<{
+    id: string;
+    teacher_id: string;
+    title: string;
+    description?: string | null;
+    file_url?: string | null;
+    uploaded_at?: string | null;
+  }>;
+}
+
 // Function to convert YouTube URLs to embed format
 function getEmbedUrl(url: string | null): string {
   if (!url) return "";
-  // لو اللينك قصير من youtu.be
   if (url.includes("youtu.be")) {
     const videoId = url.split("youtu.be/")[1].split("?")[0];
     return `https://www.youtube.com/embed/${videoId}`;
   }
-  // لو اللينك فيه watch?v=
   if (url.includes("watch?v=")) {
     const videoId = url.split("watch?v=")[1].split("&")[0];
     return `https://www.youtube.com/embed/${videoId}`;
@@ -140,6 +143,8 @@ const StudentDashboard: React.FC = () => {
   const [showVideosPanel, setShowVideosPanel] = useState(false);
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
   const [centerId, setCenterId] = useState<string | null>(null);
+  const [activeVideo, setActiveVideo] = useState<string | null>(null);
+  const [examResults, setExamResults] = useState<{[key: string]: any}>({});
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -147,7 +152,6 @@ const StudentDashboard: React.FC = () => {
 
       try {
         console.log("🔍 Fetching center info for subdomain:", centerSlug);
-        // جلب معلومات السنتر بناءً على الـ subdomain بدلاً من slug
         const { data: centerData, error } = await supabase
           .from("centers")
           .select("id, name, subdomain")
@@ -179,7 +183,6 @@ const StudentDashboard: React.FC = () => {
       try {
         if (!user) {
           console.log("👤 No user found, setting mock data");
-          // Set mock data to display sections even without user
           setUpcomingLessons([
             {
               id: "1",
@@ -236,15 +239,14 @@ const StudentDashboard: React.FC = () => {
         // 2️⃣ إذا كان هناك اشتراكات، جلب المحتوى المرتبط
         if (subs && subs.length > 0) {
           const teacherIds = subs.map((s: any) => s.teacher_id);
-          const uniqueTeacherIds = [...new Set(teacherIds)]; // إزالة التكرارات
+          const uniqueTeacherIds = [...new Set(teacherIds)];
           
           console.log("👨‍🏫 Teacher IDs from subscriptions:", uniqueTeacherIds);
 
-          // التحقق إذا كان هناك اشتراك شامل للسنتر
           const isCenterWide = subs.some((s: any) => s.center_wide === true);
           console.log("🎯 Is center-wide subscription:", isCenterWide);
 
-          // جلب بيانات المدرسين أولاً
+          // جلب بيانات المدرسين
           console.log("👨‍🏫 Step 2: Fetching teachers data");
           const { data: teachersData, error: teachersError } = await supabase
             .from("teachers")
@@ -257,7 +259,6 @@ const StudentDashboard: React.FC = () => {
             console.log("✅ Teachers data loaded:", teachersData);
           }
 
-          // إنشاء كائن لربط بيانات المدرسين بسرعة
           const teachersMap = new Map();
           teachersData?.forEach(teacher => {
             teachersMap.set(teacher.id, teacher);
@@ -273,20 +274,17 @@ const StudentDashboard: React.FC = () => {
             is_active: s.is_active,
             center_wide: s.center_wide,
             teacher: teachersMap.get(s.teacher_id) || null,
-            videos: [],
+            videosWithExams: [],
             materials: [],
-            exams: [],
           }));
 
           console.log("📦 Initial subscriptions with content structure:", subsWithContent);
 
           // 3️⃣ جلب المحتوى بناءً على نوع الاشتراك
           if (isCenterWide && centerId) {
-            // إذا كان اشتراك شامل، جلب كل محتوى المدرسين في هذا السنتر
+            // اشتراك شامل - جلب كل محتوى السنتر
             console.log("🎯 Step 3A: Center-wide subscription detected, fetching all center content for center:", centerId);
 
-            // جلب كل المدرسين في السنتر
-            console.log("👨‍🏫 Fetching all teachers in center:", centerId);
             const { data: centerTeachers, error: centerTeachersError } = await supabase
               .from("teachers")
               .select("id")
@@ -294,48 +292,94 @@ const StudentDashboard: React.FC = () => {
 
             if (centerTeachersError) {
               console.error("❌ Center teachers fetch error:", centerTeachersError);
+            } else if (centerTeachers && centerTeachers.length > 0) {
+              const centerTeacherIds = centerTeachers.map(t => t.id);
+              console.log("🎯 Center teacher IDs for content:", centerTeacherIds);
+
+              // جلب الفيديوهات مع الامتحانات المرتبطة
+              console.log("🎥 Fetching videos with exams for center teachers");
+              const { data: videosData, error: videosError } = await supabase
+                .from("videos")
+                .select("id, teacher_id, title, description, video_url, uploaded_at")
+                .in("teacher_id", centerTeacherIds);
+
+              if (videosError) {
+                console.error("❌ Videos fetch error:", videosError);
+              } else {
+                console.log("✅ Center videos found:", videosData?.length || 0);
+                
+                // جلب الامتحانات المرتبطة بالفيديوهات
+                if (videosData && videosData.length > 0) {
+                  const videoIds = videosData.map(v => v.id);
+                  const { data: examsData, error: examsError } = await supabase
+                    .from("exams")
+                    .select(`
+                      *,
+                      exam_questions (
+                        id,
+                        question_text,
+                        exam_options (
+                          id,
+                          option_text,
+                          is_correct
+                        )
+                      )
+                    `)
+                    .in("video_id", videoIds);
+
+                  if (examsError) {
+                    console.error("❌ Exams fetch error:", examsError);
+                  } else {
+                    console.log("✅ Center exams found:", examsData?.length || 0);
+                    
+                    // ربط الفيديوهات بالامتحانات الخاصة بها
+                    const videosWithExams = videosData.map(video => ({
+                      ...video,
+                      exams: examsData?.filter(exam => exam.video_id === video.id) || []
+                    }));
+
+                    subsWithContent.forEach(sub => {
+                      sub.videosWithExams = videosWithExams;
+                    });
+                  }
+                }
+              }
+
+              // جلب المواد الدراسية
+              console.log("📚 Fetching materials for center teachers");
+              const { data: materialsData, error: materialsError } = await supabase
+                .from("materials")
+                .select("id, teacher_id, title, description, file_url, uploaded_at")
+                .in("teacher_id", centerTeacherIds);
+
+              if (materialsError) {
+                console.error("❌ Materials fetch error:", materialsError);
+              } else {
+                console.log("✅ Center materials found:", materialsData?.length || 0);
+                subsWithContent.forEach(sub => {
+                  sub.materials = materialsData || [];
+                });
+              }
+            }
+          } else {
+            // اشتراك عادي - جلب محتوى المدرسين المحددين فقط
+            console.log("🎯 Step 3B: Regular subscription, fetching specific teachers content for teachers:", uniqueTeacherIds);
+
+            // جلب الفيديوهات مع الامتحانات المرتبطة
+            console.log("🎥 Fetching videos with exams for specific teachers");
+            const { data: videosData, error: videosError } = await supabase
+              .from("videos")
+              .select("id, teacher_id, title, description, video_url, uploaded_at")
+              .in("teacher_id", uniqueTeacherIds);
+
+            if (videosError) {
+              console.error("❌ Videos fetch error:", videosError);
             } else {
-              console.log("✅ All teachers in center:", centerTeachers);
+              console.log("✅ Teacher-specific videos found:", videosData?.length || 0);
               
-              if (centerTeachers && centerTeachers.length > 0) {
-                const centerTeacherIds = centerTeachers.map(t => t.id);
-                console.log("🎯 Center teacher IDs for content:", centerTeacherIds);
-
-                // جلب الفيديوهات
-                console.log("🎥 Fetching videos for center teachers");
-                const { data: videosData, error: videosError } = await supabase
-                  .from("videos")
-                  .select("id, teacher_id, title, description, video_url, uploaded_at")
-                  .in("teacher_id", centerTeacherIds);
-
-                if (videosError) {
-                  console.error("❌ Videos fetch error:", videosError);
-                } else {
-                  console.log("✅ Center videos found:", videosData?.length || 0);
-                  // إضافة الفيديوهات لجميع الاشتراكات
-                  subsWithContent.forEach(sub => {
-                    sub.videos = videosData || [];
-                  });
-                }
-
-                // جلب المواد الدراسية
-                console.log("📚 Fetching materials for center teachers");
-                const { data: materialsData, error: materialsError } = await supabase
-                  .from("materials")
-                  .select("id, teacher_id, title, description, file_url, uploaded_at")
-                  .in("teacher_id", centerTeacherIds);
-
-                if (materialsError) {
-                  console.error("❌ Materials fetch error:", materialsError);
-                } else {
-                  console.log("✅ Center materials found:", materialsData?.length || 0);
-                  subsWithContent.forEach(sub => {
-                    sub.materials = materialsData || [];
-                  });
-                }
-
-                // جلب الامتحانات مع الأسئلة والخيارات
-                console.log("📝 Fetching exams with questions and options for center teachers");
+              // جلب الامتحانات المرتبطة بالفيديوهات
+              if (videosData && videosData.length > 0) {
+                const videoIds = videosData.map(v => v.id);
                 const { data: examsData, error: examsError } = await supabase
                   .from("exams")
                   .select(`
@@ -350,41 +394,23 @@ const StudentDashboard: React.FC = () => {
                       )
                     )
                   `)
-                  .in("teacher_id", centerTeacherIds);
-
-                console.log("DEBUG exams data:", examsData, examsError);
+                  .in("video_id", videoIds);
 
                 if (examsError) {
                   console.error("❌ Exams fetch error:", examsError);
                 } else {
-                  console.log("✅ Center exams found:", examsData?.length || 0);
+                  console.log("✅ Teacher-specific exams found:", examsData?.length || 0);
+                  
+                  // ربط الفيديوهات بالامتحانات الخاصة بها وتوزيعها على الاشتراكات
                   subsWithContent.forEach(sub => {
-                    sub.exams = examsData || [];
+                    const teacherVideos = videosData.filter(video => video.teacher_id === sub.teacher_id);
+                    sub.videosWithExams = teacherVideos.map(video => ({
+                      ...video,
+                      exams: examsData?.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
+                    }));
                   });
                 }
-              } else {
-                console.log("❌ No teachers found in center");
               }
-            }
-          } else {
-            // إذا كان اشتراك عادي، جلب محتوى المدرسين المحددين فقط
-            console.log("🎯 Step 3B: Regular subscription, fetching specific teachers content for teachers:", uniqueTeacherIds);
-
-            // جلب الفيديوهات
-            console.log("🎥 Fetching videos for specific teachers");
-            const { data: videosData, error: videosError } = await supabase
-              .from("videos")
-              .select("id, teacher_id, title, description, video_url, uploaded_at")
-              .in("teacher_id", uniqueTeacherIds);
-
-            if (videosError) {
-              console.error("❌ Videos fetch error:", videosError);
-            } else {
-              console.log("✅ Teacher-specific videos found:", videosData?.length || 0);
-              // توزيع الفيديوهات على الاشتراكات المناسبة
-              subsWithContent.forEach(sub => {
-                sub.videos = videosData ? videosData.filter(video => video.teacher_id === sub.teacher_id) : [];
-              });
             }
 
             // جلب المواد الدراسية
@@ -402,36 +428,6 @@ const StudentDashboard: React.FC = () => {
                 sub.materials = materialsData ? materialsData.filter(material => material.teacher_id === sub.teacher_id) : [];
               });
             }
-
-            // جلب الامتحانات مع الأسئلة والخيارات
-            console.log("📝 Fetching exams with questions and options for specific teachers");
-            const { data: examsData, error: examsError } = await supabase
-              .from("exams")
-              .select(`
-                *,
-                exam_questions (
-                  id,
-                  question_text,
-                  exam_options (
-                    id,
-                    option_text,
-                    is_correct
-                  )
-                )
-              `)
-              .in("teacher_id", uniqueTeacherIds);
-
-            console.log("DEBUG exams data:", examsData, examsError);
-
-            if (examsError) {
-              console.error("❌ Exams fetch error:", examsError);
-            } else {
-              console.log("✅ Teacher-specific exams found:", examsData?.length || 0);
-              // ربط الامتحانات بالاشتراكات المناسبة
-              subsWithContent.forEach(sub => {
-                sub.exams = examsData ? examsData.filter(e => e.teacher_id === sub.teacher_id) : [];
-              });
-            }
           }
 
           console.log("✅ Final subscriptions data with content:", subsWithContent);
@@ -441,7 +437,23 @@ const StudentDashboard: React.FC = () => {
           setSubscriptionsData([]);
         }
 
-        // --- الحفاظ على محتوى الداشبورد الآخر (بيانات تجريبية أو خفيفة) ---
+        // جلب نتائج الامتحانات للطالب
+        if (user) {
+          const { data: studentExamResults, error: resultsError } = await supabase
+            .from("exam_results")
+            .select("exam_id, score, submitted_at")
+            .eq("student_id", user.id);
+
+          if (!resultsError && studentExamResults) {
+            const resultsMap: {[key: string]: any} = {};
+            studentExamResults.forEach(result => {
+              resultsMap[result.exam_id] = result;
+            });
+            setExamResults(resultsMap);
+          }
+        }
+
+        // بيانات تجريبية للداشبورد
         setUpcomingLessons([
           {
             id: "1",
@@ -457,33 +469,15 @@ const StudentDashboard: React.FC = () => {
           },
         ]);
 
-        // المهام المعلقة
-        console.log("📝 Fetching pending assignments");
-        const { data: examResults, error: examResultsError } = await supabase
-          .from("exam_results")
-          .select("id, exam_id, submitted_at, score, exams(title, description)")
-          .eq("student_id", user.id)
-          .is("score", null);
+        setAiSuggestions([
+          {
+            id: "1",
+            title: "Review Calculus Fundamentals",
+            reason: "Based on your recent quiz performance",
+            icon: "BookOpen",
+          },
+        ]);
 
-        if (examResultsError) {
-          console.error("❌ Exam results fetch error:", examResultsError);
-        }
-
-        if (examResults) {
-          setPendingAssignments(
-            examResults.map((er: any) => ({
-              id: er.id,
-              title: er.exams?.title || "Exam",
-              dueDate: "Soon",
-              course: er.exams?.title || "Course",
-              status: "urgent",
-            }))
-          );
-        } else {
-          setPendingAssignments([]);
-        }
-
-        // تقدم الدورة
         if (subs && subs.length > 0) {
           setCourseProgress(
             subs.map((s: any, idx: number) => ({
@@ -498,45 +492,11 @@ const StudentDashboard: React.FC = () => {
           setCourseProgress([]);
         }
 
-        // اقتراحات الذكاء الاصطناعي والإنجازات (بيانات تجريبية)
-        setAiSuggestions([
-          {
-            id: "1",
-            title: "Review Calculus Fundamentals",
-            reason: "Based on your recent quiz performance",
-            icon: "BookOpen",
-          },
-        ]);
-
-        console.log("💰 Fetching payment achievements");
-        const { data: payments, error: paymentsError } = await supabase
-          .from("payments")
-          .select("*")
-          .eq("student_id", user.id)
-          .eq("status", "confirmed");
-
-        if (paymentsError) {
-          console.error("❌ Payments fetch error:", paymentsError);
-        }
-
-        if (payments && payments.length > 0) {
-          setRecentAchievements(
-            payments.slice(0, 2).map((p: any) => ({
-              id: p.id,
-              title: "Subscription Payment",
-              description: `Paid ${p.amount}`,
-              date: new Date(p.payment_date).toLocaleDateString(),
-            }))
-          );
-        } else {
-          setRecentAchievements([]);
-        }
-
       } catch (error) {
         console.error("🚨 Unexpected error in dashboard:", error);
         toast.error("Failed to load dashboard data");
 
-        // تعيين بيانات تجريبية إذا فشل جلب البيانات
+        // بيانات تجريبية في حالة الخطأ
         setUpcomingLessons([
           {
             id: "1",
@@ -577,43 +537,7 @@ const StudentDashboard: React.FC = () => {
     fetchSubscriptionsAndContent();
   }, [user, centerId]);
 
-  useEffect(() => {
-    console.log("🔄 Debug: Student subscriptions state updated:", subscriptionsData);
-    if (subscriptionsData.length > 0) {
-      console.log("📊 Content summary per subscription:");
-      subscriptionsData.forEach((sub, index) => {
-        console.log(`📦 Subscription ${index + 1} (Teacher: ${sub.teacher?.full_name}):`);
-        console.log(`   🎥 Videos: ${sub.videos.length}`);
-        console.log(`   📚 Materials: ${sub.materials.length}`);
-        console.log(`   📝 Exams: ${sub.exams.length}`);
-        
-        if (sub.exams.length > 0) {
-          console.log("   📝 Exam details:", sub.exams);
-          sub.exams.forEach((exam, examIndex) => {
-            console.log(`      Exam ${examIndex + 1}: ${exam.title}`);
-            console.log(`        Questions: ${exam.exam_questions?.length || 0}`);
-            if (exam.exam_questions) {
-              exam.exam_questions.forEach((q, qIndex) => {
-                console.log(`        Question ${qIndex + 1}: ${q.question_text}`);
-                console.log(`          Options: ${q.exam_options?.length || 0}`);
-              });
-            }
-          });
-        }
-      });
-      
-      // حساب إجمالي المحتوى المتاح
-      const totalVideos = subscriptionsData.reduce((sum, sub) => sum + sub.videos.length, 0);
-      const totalMaterials = subscriptionsData.reduce((sum, sub) => sum + sub.materials.length, 0);
-      const totalExams = subscriptionsData.reduce((sum, sub) => sum + sub.exams.length, 0);
-      
-      console.log(`📊 TOTAL CONTENT - Videos: ${totalVideos}, Materials: ${totalMaterials}, Exams: ${totalExams}`);
-    } else {
-      console.log("📭 No subscriptions data available");
-    }
-  }, [subscriptionsData]);
-
-  // حساب حالة الاشتراك (نشط / منتهي / غير نشط)
+  // حساب حالة الاشتراك
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
     const end = s.end_date ? new Date(s.end_date) : null;
@@ -650,7 +574,6 @@ const StudentDashboard: React.FC = () => {
       toast.error("No file available for download");
       return;
     }
-    // إنشاء لينك تحميل للملف
     const link = document.createElement('a');
     link.href = fileUrl;
     link.download = title;
@@ -659,6 +582,21 @@ const StudentDashboard: React.FC = () => {
     link.click();
     document.body.removeChild(link);
     toast.success(`Downloading ${title}`);
+  };
+
+  const handleVideoPlay = (videoId: string) => {
+    setActiveVideo(activeVideo === videoId ? null : videoId);
+  };
+
+  const getExamResultStatus = (examId: string) => {
+    const result = examResults[examId];
+    if (!result) return null;
+    
+    return {
+      score: result.score,
+      submittedAt: result.submitted_at,
+      passed: result.score && result.score >= 60 // افترض أن النجاح من 60
+    };
   };
 
   if (loading) {
@@ -687,7 +625,7 @@ const StudentDashboard: React.FC = () => {
           <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || centerSlug || "Unknown"}</p>
         </div>
 
-        {/* Overview cards (kept old layout structure) */}
+        {/* Overview cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Today's lessons */}
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
@@ -695,7 +633,6 @@ const StudentDashboard: React.FC = () => {
               <BookOpen className="w-5 h-5 text-primary-500 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Today's Lessons</h2>
             </div>
-
             {upcomingLessons.length > 0 ? (
               <div className="space-y-3 flex-grow">
                 {upcomingLessons.map((lesson) => (
@@ -709,11 +646,6 @@ const StudentDashboard: React.FC = () => {
             ) : (
               <p className="text-gray-500 py-4 text-center">No lessons scheduled for today</p>
             )}
-
-            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all classes
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </button>
           </div>
 
           {/* Pending assignments */}
@@ -722,7 +654,6 @@ const StudentDashboard: React.FC = () => {
               <FileText className="w-5 h-5 text-secondary-500 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Pending Assignments</h2>
             </div>
-
             {pendingAssignments.length > 0 ? (
               <div className="space-y-3 flex-grow">
                 {pendingAssignments.map((assignment) => (
@@ -738,11 +669,6 @@ const StudentDashboard: React.FC = () => {
             ) : (
               <p className="text-gray-500 py-4 text-center">No pending assignments</p>
             )}
-
-            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all assignments
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </button>
           </div>
 
           {/* AI Suggestions */}
@@ -751,7 +677,6 @@ const StudentDashboard: React.FC = () => {
               <Calendar className="w-5 h-5 text-accent-500 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">AI Study Suggestions</h2>
             </div>
-
             {aiSuggestions.length > 0 ? (
               <div className="space-y-3 flex-grow">
                 {aiSuggestions.map((sug) => (
@@ -767,11 +692,6 @@ const StudentDashboard: React.FC = () => {
             ) : (
               <p className="text-gray-500 py-4 text-center">No suggestions available</p>
             )}
-
-            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              See more recommendations
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </button>
           </div>
 
           {/* Achievements */}
@@ -780,7 +700,6 @@ const StudentDashboard: React.FC = () => {
               <Award className="w-5 h-5 text-warning-500 mr-2" />
               <h2 className="text-lg font-semibold text-gray-900">Achievements</h2>
             </div>
-
             {recentAchievements.length > 0 ? (
               <div className="space-y-3 flex-grow">
                 {recentAchievements.map((ach) => (
@@ -801,15 +720,10 @@ const StudentDashboard: React.FC = () => {
             ) : (
               <p className="text-gray-500 py-4 text-center">No achievements yet</p>
             )}
-
-            <button className="mt-4 text-sm text-primary-600 hover:text-primary-700 inline-flex items-center">
-              View all achievements
-              <ExternalLink className="ml-1 w-4 h-4" />
-            </button>
           </div>
         </div>
 
-        {/* Subscriptions section (Teachers + their content) */}
+        {/* Subscriptions section - المحتوى الرئيسي */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -826,25 +740,25 @@ const StudentDashboard: React.FC = () => {
               You have no subscriptions yet. Please subscribe to a teacher to access their courses, videos and exams.
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-6">
               {subscriptionsData.map((sub) => {
                 const status = computeSubscriptionStatus(sub);
                 const isExpired = status === "expired";
 
                 return (
-                  <div key={sub.id} className="border rounded-md p-4">
-                    <div className="flex justify-between items-start">
+                  <div key={sub.id} className="border rounded-lg p-6">
+                    <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold">
+                        <h3 className="text-xl font-semibold text-gray-900">
                           {sub.teacher?.full_name || "Unknown Teacher"}
                         </h3>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-500 mt-1">
                           {sub.teacher?.subject && `Subject: ${sub.teacher.subject} • `}
                           Subscription: {formatDate(sub.start_date)} - {formatDate(sub.end_date)}
                           {sub.center_wide && " (Center Wide)"}
                         </p>
                         <p
-                          className={`text-sm font-medium ${
+                          className={`text-sm font-medium mt-1 ${
                             status === "expired"
                               ? "text-red-600"
                               : status === "inactive"
@@ -852,69 +766,168 @@ const StudentDashboard: React.FC = () => {
                               : "text-green-600"
                           }`}
                         >
-                          Status: {status}
+                          Status: {status.toUpperCase()}
                         </p>
                       </div>
                     </div>
 
                     {showVideosPanel && (
-                      <div className="mt-4 space-y-6">
-                        {/* Videos Section */}
+                      <div className="space-y-8">
+                        {/* Videos with Exams Section */}
                         <div>
-                          <h4 className="font-semibold text-gray-800 mb-2">
-                            Videos ({sub.videos.length})
+                          <h4 className="font-semibold text-gray-800 mb-4 text-lg">
+                            Course Content ({sub.videosWithExams.length} Videos)
                           </h4>
 
                           {isExpired ? (
-                            <p className="text-red-600 font-medium">
-                              ⚠️ Your subscription has expired. Please renew to access videos.
-                            </p>
-                          ) : (
-                            <div className="space-y-3">
-                              {sub.videos.length > 0 ? (
-                                sub.videos.map((v) => (
-                                  <div key={v.id} className="border rounded p-3 bg-gray-50">
-                                    <p className="font-medium">{v.title}</p>
-                                    {v.description && (
-                                      <p className="text-sm text-gray-600 mt-1">{v.description}</p>
-                                    )}
-                                    {v.video_url && (
-                                      <iframe
-                                        src={getEmbedUrl(v.video_url)}
-                                        title={v.title}
-                                        className="w-full h-60 rounded mt-2"
-                                        allowFullScreen
-                                      ></iframe>
-                                    )}
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      Uploaded: {formatDateTime(v.uploaded_at)}
-                                    </p>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-gray-500">No videos available</p>
-                              )}
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                              <p className="text-red-600 font-medium">
+                                ⚠️ Your subscription has expired. Please renew to access all content.
+                              </p>
                             </div>
+                          ) : sub.videosWithExams.length > 0 ? (
+                            <div className="space-y-6">
+                              {sub.videosWithExams.map((video) => (
+                                <div key={video.id} className="border rounded-lg overflow-hidden">
+                                  {/* Video Section */}
+                                  <div 
+                                    className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                                    onClick={() => handleVideoPlay(video.id)}
+                                  >
+                                    <div className="flex justify-between items-center">
+                                      <div className="flex items-center space-x-3">
+                                        <Play className="w-5 h-5 text-primary-600" />
+                                        <div>
+                                          <h5 className="font-semibold text-gray-900">{video.title}</h5>
+                                          {video.description && (
+                                            <p className="text-sm text-gray-600 mt-1">{video.description}</p>
+                                          )}
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            Uploaded: {formatDateTime(video.uploaded_at)}
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="text-sm text-gray-500">
+                                        {activeVideo === video.id ? 'Hide Video' : 'Show Video'}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Video Player */}
+                                  {activeVideo === video.id && video.video_url && (
+                                    <div className="p-4 bg-black">
+                                      <iframe
+                                        src={getEmbedUrl(video.video_url)}
+                                        title={video.title}
+                                        className="w-full h-64 md:h-96 rounded"
+                                        allowFullScreen
+                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                      ></iframe>
+                                    </div>
+                                  )}
+
+                                  {/* Exams for this Video */}
+                                  {video.exams.length > 0 && (
+                                    <div className="border-t">
+                                      <div className="p-4 bg-blue-50">
+                                        <h6 className="font-semibold text-gray-800 mb-3 flex items-center">
+                                          <FileText className="w-4 h-4 mr-2 text-blue-600" />
+                                          Exams for this video ({video.exams.length})
+                                        </h6>
+                                        <div className="space-y-3">
+                                          {video.exams.map((exam) => {
+                                            const examResult = getExamResultStatus(exam.id);
+                                            
+                                            return (
+                                              <div key={exam.id} className="bg-white rounded-lg p-4 border">
+                                                <div className="flex justify-between items-start">
+                                                  <div className="flex-1">
+                                                    <div className="flex items-center space-x-2 mb-2">
+                                                      <p className="font-medium text-gray-900">{exam.title}</p>
+                                                      {examResult && (
+                                                        examResult.passed ? (
+                                                          <CheckCircle className="w-4 h-4 text-green-600" />
+                                                        ) : (
+                                                          <XCircle className="w-4 h-4 text-red-600" />
+                                                        )
+                                                      )}
+                                                    </div>
+                                                    {exam.description && (
+                                                      <p className="text-sm text-gray-600 mb-2">{exam.description}</p>
+                                                    )}
+                                                    <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                                                      {exam.total_marks && (
+                                                        <span>Total Marks: {exam.total_marks}</span>
+                                                      )}
+                                                      {exam.duration_minutes && (
+                                                        <span className="flex items-center">
+                                                          <Clock className="w-4 h-4 mr-1" />
+                                                          {exam.duration_minutes} minutes
+                                                        </span>
+                                                      )}
+                                                      {exam.questions_count && (
+                                                        <span>Questions: {exam.questions_count}</span>
+                                                      )}
+                                                      {examResult && (
+                                                        <span className={`font-medium ${
+                                                          examResult.passed ? 'text-green-600' : 'text-red-600'
+                                                        }`}>
+                                                          Score: {examResult.score}%
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                    {examResult && (
+                                                      <p className="text-xs text-gray-400 mt-2">
+                                                        Submitted: {formatDateTime(examResult.submittedAt)}
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                  <button
+                                                    onClick={() => handleStartExam(exam.id)}
+                                                    disabled={!!examResult}
+                                                    className={`ml-4 px-4 py-2 rounded-md whitespace-nowrap ${
+                                                      examResult
+                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        : 'bg-secondary-600 text-white hover:bg-secondary-700'
+                                                    }`}
+                                                  >
+                                                    {examResult ? 'Completed' : 'Start Exam'}
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-center py-4">No videos available for this subscription</p>
                           )}
                         </div>
 
                         {/* Materials Section */}
                         <div>
-                          <h4 className="font-semibold text-gray-800 mb-2">
+                          <h4 className="font-semibold text-gray-800 mb-4 text-lg">
                             Study Materials ({sub.materials.length})
                           </h4>
 
                           {isExpired ? (
-                            <p className="text-red-600 font-medium">
-                              ⚠️ Your subscription has expired. Please renew to access materials.
-                            </p>
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                              <p className="text-red-600 font-medium">
+                                ⚠️ Your subscription has expired. Please renew to access materials.
+                              </p>
+                            </div>
                           ) : (
                             <div className="space-y-3">
                               {sub.materials.length > 0 ? (
                                 sub.materials.map((material) => (
-                                  <div key={material.id} className="border rounded p-3 bg-gray-50 flex justify-between items-center">
+                                  <div key={material.id} className="border rounded p-4 bg-gray-50 flex justify-between items-center">
                                     <div>
-                                      <p className="font-medium">{material.title}</p>
+                                      <p className="font-medium text-gray-900">{material.title}</p>
                                       {material.description && (
                                         <p className="text-sm text-gray-600 mt-1">{material.description}</p>
                                       )}
@@ -924,7 +937,7 @@ const StudentDashboard: React.FC = () => {
                                     </div>
                                     <button
                                       onClick={() => handleDownloadMaterial(material.file_url, material.title)}
-                                      className="flex items-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                                      className="flex items-center px-3 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
                                     >
                                       <Download className="w-4 h-4 mr-1" />
                                       Download
@@ -932,65 +945,7 @@ const StudentDashboard: React.FC = () => {
                                   </div>
                                 ))
                               ) : (
-                                <p className="text-gray-500">No study materials available</p>
-                              )}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Exams Section */}
-                        <div>
-                          <h4 className="font-semibold text-gray-800 mb-2">
-                            Exams ({sub.exams.length})
-                          </h4>
-
-                          {isExpired ? (
-                            <p className="text-red-600 font-medium">
-                              ⚠️ Your subscription has expired. Please renew to access exams.
-                            </p>
-                          ) : (
-                            <div className="space-y-3">
-                              {sub.exams.length > 0 ? (
-                                sub.exams.map((exam) => (
-                                  <div key={exam.id} className="border rounded p-3 bg-gray-50">
-                                    <div className="flex justify-between items-start">
-                                      <div className="flex-1">
-                                        <p className="font-medium text-lg">{exam.title}</p>
-                                        {exam.description && (
-                                          <p className="text-sm text-gray-600 mt-1">{exam.description}</p>
-                                        )}
-                                        <div className="flex flex-wrap gap-4 mt-2 text-sm text-gray-500">
-                                          {exam.total_marks && (
-                                            <span>Total Marks: {exam.total_marks}</span>
-                                          )}
-                                          {exam.duration_minutes && (
-                                            <span className="flex items-center">
-                                              <Clock className="w-4 h-4 mr-1" />
-                                              {exam.duration_minutes} minutes
-                                            </span>
-                                          )}
-                                          {exam.questions_count && (
-                                            <span>Questions: {exam.questions_count}</span>
-                                          )}
-                                          {exam.exam_questions && (
-                                            <span>Loaded Questions: {exam.exam_questions.length}</span>
-                                          )}
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-2">
-                                          Created: {formatDateTime(exam.created_at)}
-                                        </p>
-                                      </div>
-                                      <button
-                                        onClick={() => handleStartExam(exam.id)}
-                                        className="ml-4 px-4 py-2 bg-secondary-600 text-white rounded-md hover:bg-secondary-700 whitespace-nowrap"
-                                      >
-                                        Start Exam
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))
-                              ) : (
-                                <p className="text-gray-500">No exams available</p>
+                                <p className="text-gray-500 text-center py-4">No study materials available</p>
                               )}
                             </div>
                           )}
@@ -1004,7 +959,7 @@ const StudentDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Progress / AI / other sections preserved as earlier */}
+        {/* Other dashboard sections */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
           {courseProgress.length > 0 ? (
@@ -1017,7 +972,7 @@ const StudentDashboard: React.FC = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2">
                     <div
-                      className="bg-primary-600 h-2 rounded-full"
+                      className="bg-primary-600 h-2 rounded-full transition-all duration-300"
                       style={{ width: `${progress.progress}%` }}
                     ></div>
                   </div>
@@ -1030,43 +985,6 @@ const StudentDashboard: React.FC = () => {
           ) : (
             <div className="text-sm text-gray-500 mt-2">
               Your course progress and metrics will appear here.
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h2 className="text-xl font-semibold">AI Suggestions</h2>
-          {aiSuggestions.length > 0 ? (
-            <div className="mt-4 space-y-3">
-              {aiSuggestions.map((suggestion) => (
-                <div key={suggestion.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
-                  <p className="font-medium text-gray-900">{suggestion.title}</p>
-                  <p className="text-sm text-gray-500 mt-1">{suggestion.reason}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 mt-2">
-              Personalized suggestions will appear here.
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-lg shadow-card p-6">
-          <h2 className="text-xl font-semibold">Schedules</h2>
-          {upcomingLessons.length > 0 ? (
-            <div className="mt-4 space-y-3">
-              {upcomingLessons.map((lesson) => (
-                <div key={lesson.id} className="p-3 bg-gray-50 rounded-md border border-gray-100">
-                  <p className="font-medium text-gray-900">{lesson.title}</p>
-                  <p className="text-sm text-gray-500 mt-1">{lesson.time}</p>
-                  <p className="text-sm text-gray-500">Teacher: {lesson.teacher}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500 mt-2">
-              Your upcoming schedules and appointments will appear here.
             </div>
           )}
         </div>
