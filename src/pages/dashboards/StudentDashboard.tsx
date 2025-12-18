@@ -406,7 +406,7 @@ const StudentDashboard: React.FC = () => {
                     const teacherVideos = videosData.filter(video => video.teacher_id === sub.teacher_id);
                     sub.videosWithExams = teacherVideos.map(video => ({
                       ...video,
-                      exams: examsData?.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
+                      exams: examsData?.filter(exam => exam.video_id === video.id) || []
                     }));
                   });
                 }
