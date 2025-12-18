@@ -992,5 +992,4 @@ const StudentDashboard: React.FC = () => {
     </DashboardLayout>
   );
 };
-
 export default StudentDashboard;
