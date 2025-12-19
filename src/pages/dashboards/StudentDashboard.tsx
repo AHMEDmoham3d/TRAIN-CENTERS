@@ -311,31 +311,55 @@ const StudentDashboard: React.FC = () => {
                 // جلب الامتحانات المرتبطة بالفيديوهات
                 if (videosData && videosData.length > 0) {
                   const videoIds = videosData.map(v => v.id);
-                  const { data: examsData, error: examsError } = await supabase
-                    .from("exams")
-                    .select(`
-                      *,
-                      exam_questions (
-                        id,
-                        question_text,
-                        exam_options (
-                          id,
-                          option_text,
-                          is_correct
-                        )
-                      )
-                    `)
-                    .in("video_id", videoIds);
+                  
+                  // 1️⃣ جلب الامتحانات فقط
+                  console.log("📝 Fetching exams for videos");
+                  const { data: exams, error: examsError } = await supabase
+                    .from('exams')
+                    .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
+                    .in('video_id', videoIds);
 
                   if (examsError) {
                     console.error("❌ Exams fetch error:", examsError);
                   } else {
-                    console.log("✅ Center exams found:", examsData?.length || 0);
+                    console.log("✅ Exams found:", exams?.length || 0);
                     
+                    // 2️⃣ لكل امتحان، جلب الأسئلة والاختيارات
+                    const examsWithQuestions = await Promise.all(
+                      exams?.map(async (exam) => {
+                        // جلب أسئلة الامتحان
+                        const { data: questions } = await supabase
+                          .from('exam_questions')
+                          .select('id, question_text, exam_id')
+                          .eq('exam_id', exam.id);
+
+                        // لكل سؤال، جلب الاختيارات
+                        const questionsWithOptions = await Promise.all(
+                          questions?.map(async (question) => {
+                            const { data: options } = await supabase
+                              .from('exam_options')
+                              .select('id, option_text, is_correct, question_id')
+                              .eq('question_id', question.id);
+
+                            return {
+                              ...question,
+                              exam_options: options || []
+                            };
+                          }) || []
+                        );
+
+                        return {
+                          ...exam,
+                          questions_count: questionsWithOptions.length,
+                          exam_questions: questionsWithOptions
+                        };
+                      }) || []
+                    );
+
                     // ربط الفيديوهات بالامتحانات الخاصة بها
                     const videosWithExams = videosData.map(video => ({
                       ...video,
-                      exams: examsData?.filter(exam => exam.video_id === video.id) || []
+                      exams: examsWithQuestions.filter(exam => exam.video_id === video.id) || []
                     }));
 
                     subsWithContent.forEach(sub => {
@@ -380,33 +404,58 @@ const StudentDashboard: React.FC = () => {
               // جلب الامتحانات المرتبطة بالفيديوهات
               if (videosData && videosData.length > 0) {
                 const videoIds = videosData.map(v => v.id);
-                const { data: examsData, error: examsError } = await supabase
-                  .from("exams")
-                  .select(`
-                    *,
-                    exam_questions (
-                      id,
-                      question_text,
-                      exam_options (
-                        id,
-                        option_text,
-                        is_correct
-                      )
-                    )
-                  `)
-                  .in("video_id", videoIds);
+                
+                // 1️⃣ جلب الامتحانات فقط
+                console.log("📝 Fetching exams for videos");
+                const { data: exams, error: examsError } = await supabase
+                  .from('exams')
+                  .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
+                  .in('video_id', videoIds)
+                  .in('teacher_id', uniqueTeacherIds);
 
                 if (examsError) {
                   console.error("❌ Exams fetch error:", examsError);
                 } else {
-                  console.log("✅ Teacher-specific exams found:", examsData?.length || 0);
+                  console.log("✅ Exams found:", exams?.length || 0);
                   
+                  // 2️⃣ لكل امتحان، جلب الأسئلة والاختيارات
+                  const examsWithQuestions = await Promise.all(
+                    exams?.map(async (exam) => {
+                      // جلب أسئلة الامتحان
+                      const { data: questions } = await supabase
+                        .from('exam_questions')
+                        .select('id, question_text, exam_id')
+                        .eq('exam_id', exam.id);
+
+                      // لكل سؤال، جلب الاختيارات
+                      const questionsWithOptions = await Promise.all(
+                        questions?.map(async (question) => {
+                          const { data: options } = await supabase
+                            .from('exam_options')
+                            .select('id, option_text, is_correct, question_id')
+                            .eq('question_id', question.id);
+
+                          return {
+                            ...question,
+                            exam_options: options || []
+                          };
+                        }) || []
+                      );
+
+                      return {
+                        ...exam,
+                        questions_count: questionsWithOptions.length,
+                        exam_questions: questionsWithOptions
+                      };
+                    }) || []
+                  );
+
                   // ربط الفيديوهات بالامتحانات الخاصة بها وتوزيعها على الاشتراكات
                   subsWithContent.forEach(sub => {
                     const teacherVideos = videosData.filter(video => video.teacher_id === sub.teacher_id);
                     sub.videosWithExams = teacherVideos.map(video => ({
                       ...video,
-                      exams: examsData?.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
+                      exams: examsWithQuestions.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
                     }));
                   });
                 }
