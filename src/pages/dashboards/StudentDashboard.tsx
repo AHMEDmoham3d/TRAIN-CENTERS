@@ -15,6 +15,8 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  ArrowRight,
+  ArrowLeft,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -114,6 +116,25 @@ interface SubscriptionItem {
   }>;
 }
 
+// Interface for active exam
+interface ActiveExamState {
+  examId: string;
+  examTitle: string;
+  questions: Array<{
+    id: string;
+    question_text: string;
+    exam_options: Array<{
+      id: string;
+      option_text: string;
+      is_correct: boolean;
+    }>;
+  }>;
+  currentQuestionIndex: number;
+  userAnswers: { [questionId: string]: string };
+  timeRemaining: number;
+  isSubmitted: boolean;
+}
+
 // Function to convert YouTube URLs to embed format
 function getEmbedUrl(url: string | null): string {
   if (!url) return "";
@@ -147,7 +168,10 @@ const StudentDashboard: React.FC = () => {
   const [centerId, setCenterId] = useState<string | null>(null);
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [examResults, setExamResults] = useState<{[key: string]: any}>({});
-  const [expandedExam, setExpandedExam] = useState<string | null>(null);
+  
+  // Active exam state
+  const [activeExam, setActiveExam] = useState<ActiveExamState | null>(null);
+  const [examTimer, setExamTimer] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -616,9 +640,178 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
-  const handleStartExam = (examId: string) => {
-    toast.success(`Starting exam ${examId}`);
-    // navigate(`/exam/${examId}`);
+  const handleStartExam = (examId: string, examTitle: string, questions: any[]) => {
+    // إيقاف أي امتحان نشط حالياً
+    if (examTimer) {
+      clearInterval(examTimer);
+    }
+
+    // البحث عن وقت الامتحان
+    let examDuration = 30; // افتراضياً 30 دقيقة
+    
+    // البحث عن مدة الامتحان في البيانات
+    subscriptionsData.forEach(sub => {
+      sub.videosWithExams.forEach(video => {
+        video.exams.forEach(exam => {
+          if (exam.id === examId && exam.duration_minutes) {
+            examDuration = exam.duration_minutes;
+          }
+        });
+      });
+    });
+
+    const timeInSeconds = examDuration * 60;
+
+    setActiveExam({
+      examId,
+      examTitle,
+      questions: questions || [],
+      currentQuestionIndex: 0,
+      userAnswers: {},
+      timeRemaining: timeInSeconds,
+      isSubmitted: false
+    });
+
+    // بدء المؤقت
+    const timer = setInterval(() => {
+      setActiveExam(prev => {
+        if (!prev) return null;
+        if (prev.timeRemaining <= 0) {
+          clearInterval(timer);
+          handleSubmitExam();
+          return { ...prev, timeRemaining: 0 };
+        }
+        return { ...prev, timeRemaining: prev.timeRemaining - 1 };
+      });
+    }, 1000);
+
+    setExamTimer(timer);
+    toast.success(`Exam "${examTitle}" started!`);
+  };
+
+  const handleSelectAnswer = (questionId: string, optionId: string) => {
+    if (!activeExam) return;
+
+    setActiveExam(prev => {
+      if (!prev) return null;
+      
+      const updatedAnswers = {
+        ...prev.userAnswers,
+        [questionId]: optionId
+      };
+
+      // الانتقال للسؤال التالي تلقائياً
+      const currentIndex = prev.currentQuestionIndex;
+      const nextIndex = currentIndex + 1;
+      
+      if (nextIndex < prev.questions.length) {
+        return {
+          ...prev,
+          userAnswers: updatedAnswers,
+          currentQuestionIndex: nextIndex
+        };
+      } else {
+        return {
+          ...prev,
+          userAnswers: updatedAnswers
+        };
+      }
+    });
+  };
+
+  const handleNextQuestion = () => {
+    if (!activeExam) return;
+    
+    setActiveExam(prev => {
+      if (!prev) return null;
+      const nextIndex = prev.currentQuestionIndex + 1;
+      if (nextIndex < prev.questions.length) {
+        return { ...prev, currentQuestionIndex: nextIndex };
+      }
+      return prev;
+    });
+  };
+
+  const handlePrevQuestion = () => {
+    if (!activeExam) return;
+    
+    setActiveExam(prev => {
+      if (!prev) return null;
+      const prevIndex = prev.currentQuestionIndex - 1;
+      if (prevIndex >= 0) {
+        return { ...prev, currentQuestionIndex: prevIndex };
+      }
+      return prev;
+    });
+  };
+
+  const handleSubmitExam = async () => {
+    if (!activeExam || !user) return;
+
+    // إيقاف المؤقت
+    if (examTimer) {
+      clearInterval(examTimer);
+      setExamTimer(null);
+    }
+
+    // حساب النتيجة
+    let correctAnswers = 0;
+    const totalQuestions = activeExam.questions.length;
+
+    activeExam.questions.forEach(question => {
+      const userAnswer = activeExam.userAnswers[question.id];
+      if (userAnswer) {
+        const selectedOption = question.exam_options.find(opt => opt.id === userAnswer);
+        if (selectedOption && selectedOption.is_correct) {
+          correctAnswers++;
+        }
+      }
+    });
+
+    const score = Math.round((correctAnswers / totalQuestions) * 100);
+
+    try {
+      // حفظ النتيجة في قاعدة البيانات
+      const { error } = await supabase
+        .from("exam_results")
+        .insert({
+          exam_id: activeExam.examId,
+          student_id: user.id,
+          score: score,
+          submitted_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error("❌ Error saving exam result:", error);
+        toast.error("Failed to save exam result");
+      } else {
+        // تحديث حالة النتائج المحلية
+        setExamResults(prev => ({
+          ...prev,
+          [activeExam.examId]: {
+            score,
+            submitted_at: new Date().toISOString()
+          }
+        }));
+
+        toast.success(`Exam submitted! Score: ${score}%`);
+      }
+    } catch (error) {
+      console.error("🚨 Error submitting exam:", error);
+      toast.error("Failed to submit exam");
+    }
+
+    // تحديث حالة الامتحان
+    setActiveExam(prev => prev ? { ...prev, isSubmitted: true } : null);
+  };
+
+  const handleCancelExam = () => {
+    if (examTimer) {
+      clearInterval(examTimer);
+      setExamTimer(null);
+    }
+    setActiveExam(null);
+    toast.info("Exam cancelled");
   };
 
   const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
@@ -651,8 +844,11 @@ const StudentDashboard: React.FC = () => {
     };
   };
 
-  const toggleExamDetails = (examId: string) => {
-    setExpandedExam(expandedExam === examId ? null : examId);
+  // دالة لتحويل الثواني إلى تنسيق الوقت
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (loading) {
@@ -671,6 +867,189 @@ const StudentDashboard: React.FC = () => {
         if (action === "showVideos") setShowVideosPanel(true);
       }}
     >
+      {/* Modal for active exam */}
+      {activeExam && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            {/* Exam Header */}
+            <div className="bg-primary-600 text-white p-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold">{activeExam.examTitle}</h2>
+                <div className="flex items-center space-x-4 mt-1">
+                  <div className="flex items-center">
+                    <Clock className="w-4 h-4 mr-1" />
+                    <span>Time: {formatTime(activeExam.timeRemaining)}</span>
+                  </div>
+                  <div>
+                    Question {activeExam.currentQuestionIndex + 1} of {activeExam.questions.length}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleCancelExam}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md"
+              >
+                Cancel Exam
+              </button>
+            </div>
+
+            {/* Exam Content */}
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {!activeExam.isSubmitted ? (
+                <>
+                  {/* Current Question */}
+                  <div className="mb-6">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-4">
+                      {activeExam.currentQuestionIndex + 1}. {activeExam.questions[activeExam.currentQuestionIndex]?.question_text}
+                    </h3>
+                    
+                    {/* Options */}
+                    <div className="space-y-3">
+                      {activeExam.questions[activeExam.currentQuestionIndex]?.exam_options.map((option, index) => {
+                        const questionId = activeExam.questions[activeExam.currentQuestionIndex].id;
+                        const isSelected = activeExam.userAnswers[questionId] === option.id;
+                        
+                        return (
+                          <div
+                            key={option.id}
+                            onClick={() => handleSelectAnswer(questionId, option.id)}
+                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                              isSelected
+                                ? 'border-primary-600 bg-primary-50'
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center">
+                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-3 ${
+                                isSelected ? 'border-primary-600 bg-primary-600' : 'border-gray-400'
+                              }`}>
+                                {isSelected && (
+                                  <div className="w-2 h-2 rounded-full bg-white"></div>
+                                )}
+                              </div>
+                              <span className="font-medium text-gray-800">
+                                {String.fromCharCode(65 + index)}. {option.option_text}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Navigation Buttons */}
+                  <div className="flex justify-between items-center pt-4 border-t">
+                    <button
+                      onClick={handlePrevQuestion}
+                      disabled={activeExam.currentQuestionIndex === 0}
+                      className={`flex items-center px-4 py-2 rounded-md ${
+                        activeExam.currentQuestionIndex === 0
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-gray-600 text-white hover:bg-gray-700'
+                      }`}
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Previous
+                    </button>
+
+                    <div className="flex items-center space-x-4">
+                      <button
+                        onClick={handleSubmitExam}
+                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-md"
+                      >
+                        Submit Exam
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={handleNextQuestion}
+                      disabled={activeExam.currentQuestionIndex === activeExam.questions.length - 1}
+                      className={`flex items-center px-4 py-2 rounded-md ${
+                        activeExam.currentQuestionIndex === activeExam.questions.length - 1
+                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                          : 'bg-primary-600 text-white hover:bg-primary-700'
+                      }`}
+                    >
+                      Next
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </button>
+                  </div>
+
+                  {/* Progress Indicators */}
+                  <div className="mt-6">
+                    <div className="flex flex-wrap gap-2">
+                      {activeExam.questions.map((_, index) => {
+                        const questionId = activeExam.questions[index].id;
+                        const isAnswered = activeExam.userAnswers[questionId];
+                        const isCurrent = index === activeExam.currentQuestionIndex;
+                        
+                        return (
+                          <button
+                            key={index}
+                            onClick={() => setActiveExam(prev => 
+                              prev ? { ...prev, currentQuestionIndex: index } : null
+                            )}
+                            className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                              isCurrent
+                                ? 'border-primary-600 bg-primary-100 text-primary-700'
+                                : isAnswered
+                                ? 'border-green-500 bg-green-100 text-green-700'
+                                : 'border-gray-300 bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {index + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Results Screen */
+                <div className="text-center py-8">
+                  <div className="mb-6">
+                    <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">Exam Submitted!</h3>
+                    <p className="text-gray-600 mb-6">
+                      Thank you for completing the exam. Your results have been saved.
+                    </p>
+                  </div>
+                  
+                  <div className="bg-gray-50 rounded-lg p-6 max-w-md mx-auto">
+                    <h4 className="font-semibold text-gray-800 mb-4">Summary</h4>
+                    <div className="space-y-3">
+                      <div className="flex justify-between">
+                        <span>Total Questions:</span>
+                        <span className="font-medium">{activeExam.questions.length}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Answered:</span>
+                        <span className="font-medium">
+                          {Object.keys(activeExam.userAnswers).length} / {activeExam.questions.length}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Time Taken:</span>
+                        <span className="font-medium">
+                          {formatTime((activeExam.questions.length * 60) - activeExam.timeRemaining)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <button
+                    onClick={handleCancelExam}
+                    className="mt-6 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-md"
+                  >
+                    Back to Dashboard
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-6">
         {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
@@ -893,7 +1272,6 @@ const StudentDashboard: React.FC = () => {
                                         <div className="space-y-3">
                                           {video.exams.map((exam) => {
                                             const examResult = getExamResultStatus(exam.id);
-                                            const isExpanded = expandedExam === exam.id;
                                             
                                             return (
                                               <div key={exam.id} className="bg-white rounded-lg p-4 border">
@@ -939,77 +1317,18 @@ const StudentDashboard: React.FC = () => {
                                                       </p>
                                                     )}
                                                   </div>
-                                                  <div className="flex flex-col items-end space-y-2 ml-4">
-                                                    <button
-                                                      onClick={() => handleStartExam(exam.id)}
-                                                      disabled={!!examResult}
-                                                      className={`px-4 py-2 rounded-md whitespace-nowrap ${
-                                                        examResult
-                                                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                          : 'bg-secondary-600 text-white hover:bg-secondary-700'
-                                                      }`}
-                                                    >
-                                                      {examResult ? 'Completed' : 'Start Exam'}
-                                                    </button>
-                                                    <button
-                                                      onClick={() => toggleExamDetails(exam.id)}
-                                                      className="flex items-center text-sm text-primary-600 hover:text-primary-700"
-                                                    >
-                                                      {isExpanded ? (
-                                                        <>
-                                                          <ChevronUp className="w-4 h-4 mr-1" />
-                                                          Hide Details
-                                                        </>
-                                                      ) : (
-                                                        <>
-                                                          <ChevronDown className="w-4 h-4 mr-1" />
-                                                          Show Questions
-                                                        </>
-                                                      )}
-                                                    </button>
-                                                  </div>
+                                                  <button
+                                                    onClick={() => handleStartExam(exam.id, exam.title, exam.exam_questions || [])}
+                                                    disabled={!!examResult}
+                                                    className={`ml-4 px-4 py-2 rounded-md whitespace-nowrap ${
+                                                      examResult
+                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        : 'bg-secondary-600 text-white hover:bg-secondary-700'
+                                                    }`}
+                                                  >
+                                                    {examResult ? 'Completed' : 'Start Exam'}
+                                                  </button>
                                                 </div>
-
-                                                {/* عرض الأسئلة والاختيارات */}
-                                                {isExpanded && exam.exam_questions && (
-                                                  <div className="mt-4 pt-4 border-t">
-                                                    <h4 className="font-semibold text-gray-700 mb-3">Exam Questions:</h4>
-                                                    <div className="space-y-4">
-                                                      {exam.exam_questions.map((question, qIndex) => (
-                                                        <div key={question.id} className="bg-gray-50 p-4 rounded-md">
-                                                          <p className="font-medium text-gray-800 mb-2">
-                                                            {qIndex + 1}. {question.question_text}
-                                                          </p>
-                                                          {question.exam_options && question.exam_options.length > 0 && (
-                                                            <div className="space-y-2 ml-4">
-                                                              <p className="text-sm font-medium text-gray-700 mb-1">Options:</p>
-                                                              {question.exam_options.map((option, oIndex) => (
-                                                                <div 
-                                                                  key={option.id} 
-                                                                  className={`p-2 rounded ${
-                                                                    option.is_correct 
-                                                                      ? 'bg-green-50 border border-green-200' 
-                                                                      : 'bg-gray-100'
-                                                                  }`}
-                                                                >
-                                                                  <div className="flex items-center">
-                                                                    <span className="mr-2 text-gray-600">
-                                                                      {String.fromCharCode(65 + oIndex)}.
-                                                                    </span>
-                                                                    <span className="text-gray-800">{option.option_text}</span>
-                                                                    {option.is_correct && (
-                                                                      <CheckCircle className="w-4 h-4 text-green-600 ml-2" />
-                                                                    )}
-                                                                  </div>
-                                                                </div>
-                                                              ))}
-                                                            </div>
-                                                          )}
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  </div>
-                                                )}
                                               </div>
                                             );
                                           })}
