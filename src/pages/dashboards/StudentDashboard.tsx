@@ -13,6 +13,8 @@ import {
   Play,
   CheckCircle,
   XCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -145,6 +147,7 @@ const StudentDashboard: React.FC = () => {
   const [centerId, setCenterId] = useState<string | null>(null);
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [examResults, setExamResults] = useState<{[key: string]: any}>({});
+  const [expandedExam, setExpandedExam] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -648,6 +651,10 @@ const StudentDashboard: React.FC = () => {
     };
   };
 
+  const toggleExamDetails = (examId: string) => {
+    setExpandedExam(expandedExam === examId ? null : examId);
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -886,6 +893,7 @@ const StudentDashboard: React.FC = () => {
                                         <div className="space-y-3">
                                           {video.exams.map((exam) => {
                                             const examResult = getExamResultStatus(exam.id);
+                                            const isExpanded = expandedExam === exam.id;
                                             
                                             return (
                                               <div key={exam.id} className="bg-white rounded-lg p-4 border">
@@ -931,18 +939,77 @@ const StudentDashboard: React.FC = () => {
                                                       </p>
                                                     )}
                                                   </div>
-                                                  <button
-                                                    onClick={() => handleStartExam(exam.id)}
-                                                    disabled={!!examResult}
-                                                    className={`ml-4 px-4 py-2 rounded-md whitespace-nowrap ${
-                                                      examResult
-                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                                        : 'bg-secondary-600 text-white hover:bg-secondary-700'
-                                                    }`}
-                                                  >
-                                                    {examResult ? 'Completed' : 'Start Exam'}
-                                                  </button>
+                                                  <div className="flex flex-col items-end space-y-2 ml-4">
+                                                    <button
+                                                      onClick={() => handleStartExam(exam.id)}
+                                                      disabled={!!examResult}
+                                                      className={`px-4 py-2 rounded-md whitespace-nowrap ${
+                                                        examResult
+                                                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                          : 'bg-secondary-600 text-white hover:bg-secondary-700'
+                                                      }`}
+                                                    >
+                                                      {examResult ? 'Completed' : 'Start Exam'}
+                                                    </button>
+                                                    <button
+                                                      onClick={() => toggleExamDetails(exam.id)}
+                                                      className="flex items-center text-sm text-primary-600 hover:text-primary-700"
+                                                    >
+                                                      {isExpanded ? (
+                                                        <>
+                                                          <ChevronUp className="w-4 h-4 mr-1" />
+                                                          Hide Details
+                                                        </>
+                                                      ) : (
+                                                        <>
+                                                          <ChevronDown className="w-4 h-4 mr-1" />
+                                                          Show Questions
+                                                        </>
+                                                      )}
+                                                    </button>
+                                                  </div>
                                                 </div>
+
+                                                {/* عرض الأسئلة والاختيارات */}
+                                                {isExpanded && exam.exam_questions && (
+                                                  <div className="mt-4 pt-4 border-t">
+                                                    <h4 className="font-semibold text-gray-700 mb-3">Exam Questions:</h4>
+                                                    <div className="space-y-4">
+                                                      {exam.exam_questions.map((question, qIndex) => (
+                                                        <div key={question.id} className="bg-gray-50 p-4 rounded-md">
+                                                          <p className="font-medium text-gray-800 mb-2">
+                                                            {qIndex + 1}. {question.question_text}
+                                                          </p>
+                                                          {question.exam_options && question.exam_options.length > 0 && (
+                                                            <div className="space-y-2 ml-4">
+                                                              <p className="text-sm font-medium text-gray-700 mb-1">Options:</p>
+                                                              {question.exam_options.map((option, oIndex) => (
+                                                                <div 
+                                                                  key={option.id} 
+                                                                  className={`p-2 rounded ${
+                                                                    option.is_correct 
+                                                                      ? 'bg-green-50 border border-green-200' 
+                                                                      : 'bg-gray-100'
+                                                                  }`}
+                                                                >
+                                                                  <div className="flex items-center">
+                                                                    <span className="mr-2 text-gray-600">
+                                                                      {String.fromCharCode(65 + oIndex)}.
+                                                                    </span>
+                                                                    <span className="text-gray-800">{option.option_text}</span>
+                                                                    {option.is_correct && (
+                                                                      <CheckCircle className="w-4 h-4 text-green-600 ml-2" />
+                                                                    )}
+                                                                  </div>
+                                                                </div>
+                                                              ))}
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                )}
                                               </div>
                                             );
                                           })}
