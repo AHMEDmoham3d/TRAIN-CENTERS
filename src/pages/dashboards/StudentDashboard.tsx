@@ -132,20 +132,38 @@ interface ActiveExamState {
   currentQuestionIndex: number;
   userAnswers: { [questionId: string]: string };
   timeRemaining: number;
+  totalTime: number;
   isSubmitted: boolean;
+  score?: number;
 }
 
-// Function to convert YouTube URLs to embed format
-function getEmbedUrl(url: string | null): string {
+// Function to convert YouTube URLs to direct video stream URL
+function getDirectVideoUrl(url: string | null): string {
   if (!url) return "";
-  if (url.includes("youtu.be")) {
-    const videoId = url.split("youtu.be/")[1].split("?")[0];
-    return `https://www.youtube.com/embed/${videoId}`;
+  
+  // If it's already a direct video file, return as is
+  if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('.avi')) {
+    return url;
   }
-  if (url.includes("watch?v=")) {
-    const videoId = url.split("watch?v=")[1].split("&")[0];
-    return `https://www.youtube.com/embed/${videoId}`;
+  
+  // If it's a YouTube URL, convert to embed that hides YouTube interface
+  if (url.includes("youtu.be") || url.includes("youtube.com")) {
+    let videoId = "";
+    
+    if (url.includes("youtu.be")) {
+      videoId = url.split("youtu.be/")[1].split("?")[0];
+    } else if (url.includes("watch?v=")) {
+      videoId = url.split("watch?v=")[1].split("&")[0];
+    } else if (url.includes("youtube.com/embed/")) {
+      videoId = url.split("youtube.com/embed/")[1].split("?")[0];
+    }
+    
+    if (videoId) {
+      // Use YouTube embed with parameters to hide controls and related videos
+      return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0&controls=1&showinfo=0&fs=1&iv_load_policy=3&disablekb=1`;
+    }
   }
+  
   return url;
 }
 
@@ -513,19 +531,36 @@ const StudentDashboard: React.FC = () => {
           setSubscriptionsData([]);
         }
 
-        // جلب نتائج الامتحانات للطالب
+        // جلب نتائج الامتحانات للطالب (الدرجة الأعلى فقط لكل امتحان)
         if (user) {
+          console.log("📊 Fetching exam results for student:", user.id);
           const { data: studentExamResults, error: resultsError } = await supabase
             .from("exam_results")
             .select("exam_id, score, submitted_at")
             .eq("student_id", user.id);
 
           if (!resultsError && studentExamResults) {
-            const resultsMap: {[key: string]: any} = {};
+            console.log("📈 Exam results found:", studentExamResults.length);
+            
+            // تجميع الدرجات الأعلى لكل امتحان
+            const highestScoresMap: {[key: string]: any} = {};
             studentExamResults.forEach(result => {
-              resultsMap[result.exam_id] = result;
+              const examId = result.exam_id;
+              const currentScore = result.score;
+              
+              // إذا لم يكن هناك نتيجة لهذا الامتحان بعد، أو إذا كانت النتيجة الحالية أعلى
+              if (!highestScoresMap[examId] || currentScore > highestScoresMap[examId].score) {
+                highestScoresMap[examId] = {
+                  score: currentScore,
+                  submitted_at: result.submitted_at
+                };
+              }
             });
-            setExamResults(resultsMap);
+            
+            setExamResults(highestScoresMap);
+            console.log("🏆 Highest scores per exam:", highestScoresMap);
+          } else if (resultsError) {
+            console.error("❌ Error fetching exam results:", resultsError);
           }
         }
 
@@ -669,7 +704,9 @@ const StudentDashboard: React.FC = () => {
       currentQuestionIndex: 0,
       userAnswers: {},
       timeRemaining: timeInSeconds,
-      isSubmitted: false
+      totalTime: timeInSeconds,
+      isSubmitted: false,
+      score: undefined
     });
 
     // بدء المؤقت
@@ -771,21 +808,86 @@ const StudentDashboard: React.FC = () => {
     const score = Math.round((correctAnswers / totalQuestions) * 100);
 
     try {
-      // حفظ النتيجة في قاعدة البيانات
-      const { error } = await supabase
+      // التحقق إذا كان هناك نتيجة سابقة لهذا الامتحان
+      console.log("🔍 Checking previous exam results for exam:", activeExam.examId);
+      const { data: previousResults, error: checkError } = await supabase
         .from("exam_results")
-        .insert({
-          exam_id: activeExam.examId,
-          student_id: user.id,
-          score: score,
-          submitted_at: new Date().toISOString()
-        });
+        .select("id, score")
+        .eq("exam_id", activeExam.examId)
+        .eq("student_id", user.id);
 
-      if (error) {
-        console.error("❌ Error saving exam result:", error);
-        toast.error("Failed to save exam result");
+      if (checkError) {
+        console.error("❌ Error checking previous results:", checkError);
+      }
+
+      // إذا كان هناك نتائج سابقة، نتحقق من أعلى درجة
+      let shouldSaveResult = true;
+      if (previousResults && previousResults.length > 0) {
+        const highestPreviousScore = Math.max(...previousResults.map(r => r.score));
+        console.log("📊 Previous highest score:", highestPreviousScore, "Current score:", score);
+        
+        // نحفظ النتيجة فقط إذا كانت أعلى من السابقة
+        if (score > highestPreviousScore) {
+          console.log("🎯 Current score is higher, saving new result");
+          
+          // حذف النتائج السابقة الأقل
+          const resultsToDelete = previousResults.filter(r => r.score < score);
+          for (const result of resultsToDelete) {
+            const { error: deleteError } = await supabase
+              .from("exam_results")
+              .delete()
+              .eq("id", result.id);
+              
+            if (deleteError) {
+              console.error("❌ Error deleting lower score result:", deleteError);
+            }
+          }
+          
+          // حفظ النتيجة الجديدة
+          const { error } = await supabase
+            .from("exam_results")
+            .insert({
+              exam_id: activeExam.examId,
+              student_id: user.id,
+              score: score,
+              submitted_at: new Date().toISOString()
+            });
+
+          if (error) {
+            console.error("❌ Error saving exam result:", error);
+            toast.error("Failed to save exam result");
+          } else {
+            console.log("✅ New highest score saved successfully");
+            toast.success(`Exam submitted! New high score: ${score}%`);
+          }
+        } else {
+          shouldSaveResult = false;
+          console.log("📉 Current score is not higher than previous best, not saving");
+          toast.success(`Exam submitted! Score: ${score}% (Previous best: ${highestPreviousScore}%)`);
+        }
       } else {
-        // تحديث حالة النتائج المحلية
+        // لا توجد نتائج سابقة، نحفظ النتيجة الجديدة
+        console.log("📝 No previous results found, saving new result");
+        const { error } = await supabase
+          .from("exam_results")
+          .insert({
+            exam_id: activeExam.examId,
+            student_id: user.id,
+            score: score,
+            submitted_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error("❌ Error saving exam result:", error);
+          toast.error("Failed to save exam result");
+        } else {
+          console.log("✅ First exam result saved successfully");
+          toast.success(`Exam submitted! Score: ${score}%`);
+        }
+      }
+
+      // تحديث حالة النتائج المحلية (تحديث الدرجة الأعلى فقط)
+      if (shouldSaveResult) {
         setExamResults(prev => ({
           ...prev,
           [activeExam.examId]: {
@@ -793,16 +895,21 @@ const StudentDashboard: React.FC = () => {
             submitted_at: new Date().toISOString()
           }
         }));
-
-        toast.success(`Exam submitted! Score: ${score}%`);
+      } else {
+        // إذا لم نحفظ نتيجة جديدة، نعرض الدرجة الحالية
+        const currentHighest = examResults[activeExam.examId];
+        if (currentHighest) {
+          toast.success(`Your highest score: ${currentHighest.score}%`);
+        }
       }
+
     } catch (error) {
       console.error("🚨 Error submitting exam:", error);
       toast.error("Failed to submit exam");
     }
 
     // تحديث حالة الامتحان
-    setActiveExam(prev => prev ? { ...prev, isSubmitted: true } : null);
+    setActiveExam(prev => prev ? { ...prev, isSubmitted: true, score } : null);
   };
 
   const handleCancelExam = () => {
@@ -811,7 +918,7 @@ const StudentDashboard: React.FC = () => {
       setExamTimer(null);
     }
     setActiveExam(null);
-    toast.info("Exam cancelled");
+    toast.success("Exam cancelled");
   };
 
   const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
@@ -882,6 +989,9 @@ const StudentDashboard: React.FC = () => {
                   </div>
                   <div>
                     Question {activeExam.currentQuestionIndex + 1} of {activeExam.questions.length}
+                  </div>
+                  <div>
+                    Answered: {Object.keys(activeExam.userAnswers).length} / {activeExam.questions.length}
                   </div>
                 </div>
               </div>
@@ -977,6 +1087,7 @@ const StudentDashboard: React.FC = () => {
 
                   {/* Progress Indicators */}
                   <div className="mt-6">
+                    <p className="text-sm text-gray-600 mb-2">Questions:</p>
                     <div className="flex flex-wrap gap-2">
                       {activeExam.questions.map((_, index) => {
                         const questionId = activeExam.questions[index].id;
@@ -991,7 +1102,7 @@ const StudentDashboard: React.FC = () => {
                             )}
                             className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
                               isCurrent
-                                ? 'border-primary-600 bg-primary-100 text-primary-700'
+                                ? 'border-primary-600 bg-primary-100 text-primary-700 font-bold'
                                 : isAnswered
                                 ? 'border-green-500 bg-green-100 text-green-700'
                                 : 'border-gray-300 bg-gray-100 text-gray-700'
@@ -1009,30 +1120,38 @@ const StudentDashboard: React.FC = () => {
                 <div className="text-center py-8">
                   <div className="mb-6">
                     <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
-                    <h3 className="text-2xl font-bold text-gray-800 mb-2">Exam Submitted!</h3>
+                    <h3 className="text-2xl font-bold text-gray-800 mb-2">Exam Submitted Successfully!</h3>
                     <p className="text-gray-600 mb-6">
-                      Thank you for completing the exam. Your results have been saved.
+                      Your exam has been submitted and your score has been recorded.
                     </p>
                   </div>
                   
                   <div className="bg-gray-50 rounded-lg p-6 max-w-md mx-auto">
-                    <h4 className="font-semibold text-gray-800 mb-4">Summary</h4>
+                    <h4 className="font-semibold text-gray-800 mb-4">Exam Summary</h4>
                     <div className="space-y-3">
                       <div className="flex justify-between">
                         <span>Total Questions:</span>
                         <span className="font-medium">{activeExam.questions.length}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Answered:</span>
+                        <span>Questions Answered:</span>
                         <span className="font-medium">
-                          {Object.keys(activeExam.userAnswers).length} / {activeExam.questions.length}
+                          {Object.keys(activeExam.userAnswers).length}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span>Time Taken:</span>
                         <span className="font-medium">
-                          {formatTime((activeExam.questions.length * 60) - activeExam.timeRemaining)}
+                          {formatTime(activeExam.totalTime - activeExam.timeRemaining)}
                         </span>
+                      </div>
+                      <div className="pt-3 border-t">
+                        <div className="flex justify-between text-lg font-bold">
+                          <span>Your Score:</span>
+                          <span className="text-primary-600">
+                            {activeExam.score}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1251,13 +1370,24 @@ const StudentDashboard: React.FC = () => {
                                   {/* Video Player */}
                                   {activeVideo === video.id && video.video_url && (
                                     <div className="p-4 bg-black">
-                                      <iframe
-                                        src={getEmbedUrl(video.video_url)}
-                                        title={video.title}
-                                        className="w-full h-64 md:h-96 rounded"
-                                        allowFullScreen
-                                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                      ></iframe>
+                                      {video.video_url.includes('.mp4') || video.video_url.includes('.webm') || video.video_url.includes('.mov') || video.video_url.includes('.avi') ? (
+                                        <video
+                                          src={video.video_url}
+                                          title={video.title}
+                                          className="w-full h-64 md:h-96 rounded"
+                                          controls
+                                          preload="metadata"
+                                        />
+                                      ) : (
+                                        <iframe
+                                          src={getDirectVideoUrl(video.video_url)}
+                                          title={video.title}
+                                          className="w-full h-64 md:h-96 rounded"
+                                          allowFullScreen
+                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                          frameBorder="0"
+                                        ></iframe>
+                                      )}
                                     </div>
                                   )}
 
@@ -1307,26 +1437,25 @@ const StudentDashboard: React.FC = () => {
                                                         <span className={`font-medium ${
                                                           examResult.passed ? 'text-green-600' : 'text-red-600'
                                                         }`}>
-                                                          Score: {examResult.score}%
+                                                          Highest Score: {examResult.score}%
                                                         </span>
                                                       )}
                                                     </div>
                                                     {examResult && (
                                                       <p className="text-xs text-gray-400 mt-2">
-                                                        Submitted: {formatDateTime(examResult.submittedAt)}
+                                                        Last Attempt: {formatDateTime(examResult.submittedAt)}
                                                       </p>
                                                     )}
                                                   </div>
                                                   <button
                                                     onClick={() => handleStartExam(exam.id, exam.title, exam.exam_questions || [])}
-                                                    disabled={!!examResult}
                                                     className={`ml-4 px-4 py-2 rounded-md whitespace-nowrap ${
                                                       examResult
-                                                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                                        ? 'bg-secondary-600 text-white hover:bg-secondary-700'
                                                         : 'bg-secondary-600 text-white hover:bg-secondary-700'
                                                     }`}
                                                   >
-                                                    {examResult ? 'Completed' : 'Start Exam'}
+                                                    {examResult ? 'Retake Exam' : 'Start Exam'}
                                                   </button>
                                                 </div>
                                               </div>
