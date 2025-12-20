@@ -17,6 +17,10 @@ import {
   ChevronUp,
   ArrowRight,
   ArrowLeft,
+  History,
+  Eye,
+  EyeOff,
+  BarChart3,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -120,6 +124,9 @@ interface SubscriptionItem {
 interface ActiveExamState {
   examId: string;
   examTitle: string;
+  teacherId: string;
+  teacherName: string;
+  subject?: string;
   questions: Array<{
     id: string;
     question_text: string;
@@ -137,8 +144,8 @@ interface ActiveExamState {
   score?: number;
 }
 
-// Interface for exam result history
-interface ExamResultHistory {
+// Interface for exam result
+interface ExamResult {
   id: string;
   exam_id: string;
   student_id: string;
@@ -146,6 +153,11 @@ interface ExamResultHistory {
   submitted_at: string;
   exam?: {
     title: string;
+    teacher_id: string;
+    teacher?: {
+      full_name: string;
+      subject?: string;
+    };
   };
 }
 
@@ -153,12 +165,10 @@ interface ExamResultHistory {
 function getDirectVideoUrl(url: string | null): string {
   if (!url) return "";
   
-  // If it's already a direct video file, return as is
   if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('.avi')) {
     return url;
   }
   
-  // If it's a YouTube URL, convert to embed that hides YouTube interface
   if (url.includes("youtu.be") || url.includes("youtube.com")) {
     let videoId = "";
     
@@ -171,7 +181,6 @@ function getDirectVideoUrl(url: string | null): string {
     }
     
     if (videoId) {
-      // Use YouTube embed with parameters to hide controls and related videos
       return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0&controls=1&showinfo=0&fs=1&iv_load_policy=3&disablekb=1`;
     }
   }
@@ -191,21 +200,23 @@ const StudentDashboard: React.FC = () => {
   const [recentAchievements, setRecentAchievements] = useState<RecentAchievement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // subscriptions grouped by teacher + their content
   const [subscriptionsData, setSubscriptionsData] = useState<SubscriptionItem[]>([]);
   const [showVideosPanel, setShowVideosPanel] = useState(false);
   const [centerSubdomain, setCenterSubdomain] = useState<string | null>(null);
   const [centerId, setCenterId] = useState<string | null>(null);
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
-  const [examResults, setExamResults] = useState<{[key: string]: any}>({});
+  const [examResults, setExamResults] = useState<{[key: string]: ExamResult[]}>({});
   
   // Active exam state
   const [activeExam, setActiveExam] = useState<ActiveExamState | null>(null);
   const [examTimer, setExamTimer] = useState<NodeJS.Timeout | null>(null);
   
-  // Exam result history state
-  const [examResultHistory, setExamResultHistory] = useState<ExamResultHistory[]>([]);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
+  // Exam results modal state
+  const [showExamResultsModal, setShowExamResultsModal] = useState(false);
+  const [selectedExamResults, setSelectedExamResults] = useState<ExamResult[]>([]);
+  const [selectedExamTitle, setSelectedExamTitle] = useState("");
+  const [selectedTeacherName, setSelectedTeacherName] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -240,11 +251,11 @@ const StudentDashboard: React.FC = () => {
   }, [centerSlug]);
 
   useEffect(() => {
-    const fetchExamResultHistory = async () => {
+    const fetchExamResults = async () => {
       if (!user) return;
 
       try {
-        console.log("📜 Fetching exam result history for student:", user.id);
+        console.log("📊 Fetching exam results for student:", user.id);
         const { data, error } = await supabase
           .from("exam_results")
           .select(`
@@ -253,24 +264,41 @@ const StudentDashboard: React.FC = () => {
             student_id,
             score,
             submitted_at,
-            exam:exams(title)
+            exam:exams(
+              title,
+              teacher_id,
+              teacher:teachers(
+                full_name,
+                subject
+              )
+            )
           `)
           .eq("student_id", user.id)
           .order("submitted_at", { ascending: false });
 
         if (error) {
-          console.error("❌ Error fetching exam result history:", error);
+          console.error("❌ Error fetching exam results:", error);
           return;
         }
 
-        console.log("📊 Exam result history loaded:", data?.length || 0);
-        setExamResultHistory(data || []);
+        console.log("✅ Exam results loaded:", data?.length || 0);
+
+        // Group results by exam_id
+        const groupedResults: {[key: string]: ExamResult[]} = {};
+        data?.forEach(result => {
+          if (!groupedResults[result.exam_id]) {
+            groupedResults[result.exam_id] = [];
+          }
+          groupedResults[result.exam_id].push(result);
+        });
+
+        setExamResults(groupedResults);
       } catch (error) {
-        console.error("🚨 Error fetching exam result history:", error);
+        console.error("🚨 Error fetching exam results:", error);
       }
     };
 
-    fetchExamResultHistory();
+    fetchExamResults();
   }, [user, activeExam]);
 
   useEffect(() => {
@@ -581,39 +609,6 @@ const StudentDashboard: React.FC = () => {
           setSubscriptionsData([]);
         }
 
-        // جلب نتائج الامتحانات للطالب (الدرجة الأعلى فقط لكل امتحان)
-        if (user) {
-          console.log("📊 Fetching exam results for student:", user.id);
-          const { data: studentExamResults, error: resultsError } = await supabase
-            .from("exam_results")
-            .select("exam_id, score, submitted_at")
-            .eq("student_id", user.id);
-
-          if (!resultsError && studentExamResults) {
-            console.log("📈 Exam results found:", studentExamResults.length);
-            
-            // تجميع الدرجات الأعلى لكل امتحان
-            const highestScoresMap: {[key: string]: any} = {};
-            studentExamResults.forEach(result => {
-              const examId = result.exam_id;
-              const currentScore = result.score;
-              
-              // إذا لم يكن هناك نتيجة لهذا الامتحان بعد، أو إذا كانت النتيجة الحالية أعلى
-              if (!highestScoresMap[examId] || currentScore > highestScoresMap[examId].score) {
-                highestScoresMap[examId] = {
-                  score: currentScore,
-                  submitted_at: result.submitted_at
-                };
-              }
-            });
-            
-            setExamResults(highestScoresMap);
-            console.log("🏆 Highest scores per exam:", highestScoresMap);
-          } else if (resultsError) {
-            console.error("❌ Error fetching exam results:", resultsError);
-          }
-        }
-
         // بيانات تجريبية للداشبورد
         setUpcomingLessons([
           {
@@ -725,16 +720,13 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
-  const handleStartExam = (examId: string, examTitle: string, questions: any[]) => {
-    // إيقاف أي امتحان نشط حالياً
+  const handleStartExam = (examId: string, examTitle: string, teacherId: string, teacherName: string, subject?: string, questions: any[] = []) => {
     if (examTimer) {
       clearInterval(examTimer);
     }
 
-    // البحث عن وقت الامتحان
-    let examDuration = 30; // افتراضياً 30 دقيقة
+    let examDuration = 30;
     
-    // البحث عن مدة الامتحان في البيانات
     subscriptionsData.forEach(sub => {
       sub.videosWithExams.forEach(video => {
         video.exams.forEach(exam => {
@@ -750,6 +742,9 @@ const StudentDashboard: React.FC = () => {
     setActiveExam({
       examId,
       examTitle,
+      teacherId,
+      teacherName,
+      subject,
       questions: questions || [],
       currentQuestionIndex: 0,
       userAnswers: {},
@@ -759,7 +754,6 @@ const StudentDashboard: React.FC = () => {
       score: undefined
     });
 
-    // بدء المؤقت
     const timer = setInterval(() => {
       setActiveExam(prev => {
         if (!prev) return null;
@@ -787,7 +781,6 @@ const StudentDashboard: React.FC = () => {
         [questionId]: optionId
       };
 
-      // الانتقال للسؤال التالي تلقائياً
       const currentIndex = prev.currentQuestionIndex;
       const nextIndex = currentIndex + 1;
       
@@ -835,7 +828,6 @@ const StudentDashboard: React.FC = () => {
   const handleSubmitExam = async () => {
     if (!activeExam || !user) return;
 
-    // إيقاف المؤقت
     if (examTimer) {
       clearInterval(examTimer);
       setExamTimer(null);
@@ -856,13 +848,10 @@ const StudentDashboard: React.FC = () => {
     });
 
     const score = Math.round((correctAnswers / totalQuestions) * 100);
+    const submittedAt = new Date().toISOString();
 
     try {
-      // الحصول على وقت التسليم الحالي
-      const submittedAt = new Date().toISOString();
-      
-      // حفظ النتيجة في جدول exam_results
-      console.log("💾 Saving exam result to exam_results table...");
+      console.log("💾 Saving exam result to database...");
       const { data, error } = await supabase
         .from("exam_results")
         .insert({
@@ -882,41 +871,37 @@ const StudentDashboard: React.FC = () => {
       console.log("✅ Exam result saved successfully:", data);
 
       // تحديث نتائج الامتحانات المحلية
-      setExamResults(prev => {
-        const currentHighest = prev[activeExam.examId]?.score || 0;
-        if (score > currentHighest) {
-          return {
-            ...prev,
-            [activeExam.examId]: {
-              score,
-              submitted_at: submittedAt
-            }
-          };
+      const newResult: ExamResult = {
+        id: data[0].id,
+        exam_id: activeExam.examId,
+        student_id: user.id,
+        score: score,
+        submitted_at: submittedAt,
+        exam: {
+          title: activeExam.examTitle,
+          teacher_id: activeExam.teacherId,
+          teacher: {
+            full_name: activeExam.teacherName,
+            subject: activeExam.subject
+          }
         }
-        return prev;
+      };
+
+      setExamResults(prev => {
+        const existingResults = prev[activeExam.examId] || [];
+        return {
+          ...prev,
+          [activeExam.examId]: [newResult, ...existingResults]
+        };
       });
 
-      // تحديث سجل النتائج
-      setExamResultHistory(prev => [
-        {
-          id: data[0].id,
-          exam_id: activeExam.examId,
-          student_id: user.id,
-          score: score,
-          submitted_at: submittedAt,
-          exam: { title: activeExam.examTitle }
-        },
-        ...prev
-      ]);
-
-      toast.success(`Exam submitted! Score: ${score}%`);
+      toast.success(`Exam submitted! Your score: ${score}%`);
 
     } catch (error) {
       console.error("🚨 Error submitting exam:", error);
       toast.error("Failed to submit exam");
     }
 
-    // تحديث حالة الامتحان
     setActiveExam(prev => prev ? { ...prev, isSubmitted: true, score } : null);
   };
 
@@ -927,6 +912,15 @@ const StudentDashboard: React.FC = () => {
     }
     setActiveExam(null);
     toast.success("Exam cancelled");
+  };
+
+  const handleShowExamResults = (examId: string, examTitle: string, teacherName: string, subject: string = "") => {
+    const results = examResults[examId] || [];
+    setSelectedExamResults(results);
+    setSelectedExamTitle(examTitle);
+    setSelectedTeacherName(teacherName);
+    setSelectedSubject(subject);
+    setShowExamResultsModal(true);
   };
 
   const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
@@ -948,25 +942,26 @@ const StudentDashboard: React.FC = () => {
     setActiveVideo(activeVideo === videoId ? null : videoId);
   };
 
-  const getExamResultStatus = (examId: string) => {
-    const result = examResults[examId];
-    if (!result) return null;
+  const getHighestScore = (examId: string): number => {
+    const results = examResults[examId];
+    if (!results || results.length === 0) return 0;
     
-    return {
-      score: result.score,
-      submittedAt: result.submitted_at,
-      passed: result.score && result.score >= 60 // افترض أن النجاح من 60
-    };
+    return Math.max(...results.map(r => r.score));
   };
 
-  // دالة لتحويل الثواني إلى تنسيق الوقت
+  const getLatestResult = (examId: string): ExamResult | null => {
+    const results = examResults[examId];
+    if (!results || results.length === 0) return null;
+    
+    return results[0];
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // دالة لتنسيق التاريخ بشكل أفضل
   const formatHistoryDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -1018,6 +1013,11 @@ const StudentDashboard: React.FC = () => {
                     Answered: {Object.keys(activeExam.userAnswers).length} / {activeExam.questions.length}
                   </div>
                 </div>
+                {activeExam.teacherName && (
+                  <div className="text-sm mt-1 opacity-90">
+                    Teacher: {activeExam.teacherName} {activeExam.subject && ` | Subject: ${activeExam.subject}`}
+                  </div>
+                )}
               </div>
               <button
                 onClick={handleCancelExam}
@@ -1168,7 +1168,7 @@ const StudentDashboard: React.FC = () => {
                     <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">Exam Submitted Successfully!</h3>
                     <p className="text-gray-600 mb-6">
-                      Your exam has been submitted and your score has been recorded in your history.
+                      Your exam has been submitted and your score has been recorded.
                     </p>
                   </div>
                   
@@ -1202,14 +1202,152 @@ const StudentDashboard: React.FC = () => {
                     </div>
                   </div>
                   
-                  <button
-                    onClick={handleCancelExam}
-                    className="mt-6 bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-md"
-                  >
-                    Back to Dashboard
-                  </button>
+                  <div className="mt-6 flex justify-center space-x-4">
+                    <button
+                      onClick={handleCancelExam}
+                      className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-md"
+                    >
+                      Back to Dashboard
+                    </button>
+                    <button
+                      onClick={() => handleShowExamResults(activeExam.examId, activeExam.examTitle, activeExam.teacherName, activeExam.subject)}
+                      className="bg-secondary-600 hover:bg-secondary-700 text-white px-6 py-3 rounded-md"
+                    >
+                      View Results History
+                    </button>
+                  </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal for exam results */}
+      {showExamResultsModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="bg-primary-600 text-white p-4 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-bold">{selectedExamTitle}</h2>
+                <div className="text-sm mt-1 opacity-90">
+                  Teacher: {selectedTeacherName}
+                  {selectedSubject && ` | Subject: ${selectedSubject}`}
+                </div>
+              </div>
+              <button
+                onClick={() => setShowExamResultsModal(false)}
+                className="text-white hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[70vh]">
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">Exam Results History</h3>
+                  <span className="text-sm text-gray-500">
+                    {selectedExamResults.length} attempt(s)
+                  </span>
+                </div>
+
+                {selectedExamResults.length > 0 ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <div className="text-sm text-blue-600 font-medium">Highest Score</div>
+                        <div className="text-2xl font-bold text-blue-700">
+                          {Math.max(...selectedExamResults.map(r => r.score))}%
+                        </div>
+                      </div>
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <div className="text-sm text-green-600 font-medium">Average Score</div>
+                        <div className="text-2xl font-bold text-green-700">
+                          {Math.round(selectedExamResults.reduce((sum, r) => sum + r.score, 0) / selectedExamResults.length)}%
+                        </div>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-lg">
+                        <div className="text-sm text-purple-600 font-medium">Latest Score</div>
+                        <div className="text-2xl font-bold text-purple-700">
+                          {selectedExamResults[0].score}%
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Attempt #
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Score
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Date & Time
+                            </th>
+                            <th className="px6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {selectedExamResults.map((result, index) => (
+                            <tr key={result.id} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-medium text-gray-900">
+                                  Attempt {selectedExamResults.length - index}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className={`text-lg font-bold ${
+                                  result.score >= 80 ? 'text-green-600' :
+                                  result.score >= 60 ? 'text-blue-600' :
+                                  result.score >= 50 ? 'text-yellow-600' :
+                                  'text-red-600'
+                                }`}>
+                                  {result.score}%
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm text-gray-900">
+                                  {formatHistoryDate(result.submitted_at)}
+                                </div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                  result.score >= 60
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-red-100 text-red-800'
+                                }`}>
+                                  {result.score >= 60 ? 'Passed' : 'Failed'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No Results Yet</h3>
+                    <p className="text-gray-500">Take this exam to see your results here!</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-4 border-t">
+                <button
+                  onClick={() => setShowExamResultsModal(false)}
+                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-2 rounded-md"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1224,118 +1362,28 @@ const StudentDashboard: React.FC = () => {
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
           <div className="flex justify-between items-center mt-2">
             <p className="text-sm text-primary-600">Center: {centerSubdomain || centerSlug || "Unknown"}</p>
-            <button
-              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
-              className="text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
-            >
-              {showHistoryPanel ? "Hide Exam History" : "Show Exam History"}
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => {
+                  const allResults = Object.values(examResults).flat();
+                  if (allResults.length > 0) {
+                    setSelectedExamResults(allResults);
+                    setSelectedExamTitle("All Exams");
+                    setSelectedTeacherName("");
+                    setSelectedSubject("");
+                    setShowExamResultsModal(true);
+                  } else {
+                    toast.info("You haven't taken any exams yet");
+                  }
+                }}
+                className="flex items-center text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+              >
+                <History className="w-4 h-4 mr-2" />
+                View All Results
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* Exam History Panel */}
-        {showHistoryPanel && (
-          <div className="bg-white rounded-lg shadow-card p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
-                <Award className="w-6 h-6 mr-2 text-primary-600" />
-                Exam Results History
-              </h2>
-              <span className="text-sm text-gray-500">
-                {examResultHistory.length} exam(s) taken
-              </span>
-            </div>
-
-            {examResultHistory.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Exam
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Score
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Date & Time
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {examResultHistory.map((result) => (
-                      <tr key={result.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {result.exam?.title || "Unknown Exam"}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className={`text-lg font-bold ${
-                            result.score >= 80 ? 'text-green-600' :
-                            result.score >= 60 ? 'text-blue-600' :
-                            result.score >= 50 ? 'text-yellow-600' :
-                            'text-red-600'
-                          }`}>
-                            {result.score}%
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {formatHistoryDate(result.submitted_at)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            result.score >= 60
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}>
-                            {result.score >= 60 ? 'Passed' : 'Failed'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Exam History Yet</h3>
-                <p className="text-gray-500">Take your first exam to see your results here!</p>
-              </div>
-            )}
-
-            {/* Highest Scores Summary */}
-            {examResultHistory.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Summary</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 p-4 rounded-lg">
-                    <div className="text-sm text-blue-600 font-medium">Total Exams Taken</div>
-                    <div className="text-2xl font-bold text-blue-700">{examResultHistory.length}</div>
-                  </div>
-                  <div className="bg-green-50 p-4 rounded-lg">
-                    <div className="text-sm text-green-600 font-medium">Average Score</div>
-                    <div className="text-2xl font-bold text-green-700">
-                      {Math.round(examResultHistory.reduce((sum, result) => sum + result.score, 0) / examResultHistory.length)}%
-                    </div>
-                  </div>
-                  <div className="bg-purple-50 p-4 rounded-lg">
-                    <div className="text-sm text-purple-600 font-medium">Highest Score</div>
-                    <div className="text-2xl font-bold text-purple-700">
-                      {Math.max(...examResultHistory.map(r => r.score))}%
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Overview cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -1559,26 +1607,43 @@ const StudentDashboard: React.FC = () => {
                                         </h6>
                                         <div className="space-y-3">
                                           {video.exams.map((exam) => {
-                                            const examResult = getExamResultStatus(exam.id);
+                                            const highestScore = getHighestScore(exam.id);
+                                            const latestResult = getLatestResult(exam.id);
+                                            const resultsCount = examResults[exam.id]?.length || 0;
+                                            const teacherInfo = sub.teacher;
                                             
                                             return (
                                               <div key={exam.id} className="bg-white rounded-lg p-4 border">
                                                 <div className="flex justify-between items-start">
                                                   <div className="flex-1">
-                                                    <div className="flex items-center space-x-2 mb-2">
-                                                      <p className="font-medium text-gray-900">{exam.title}</p>
-                                                      {examResult && (
-                                                        examResult.passed ? (
+                                                    <div className="flex items-center justify-between mb-2">
+                                                      <div className="flex items-center space-x-2">
+                                                        <p className="font-medium text-gray-900">{exam.title}</p>
+                                                        {highestScore > 0 && (
                                                           <CheckCircle className="w-4 h-4 text-green-600" />
-                                                        ) : (
-                                                          <XCircle className="w-4 h-4 text-red-600" />
-                                                        )
-                                                      )}
+                                                        )}
+                                                      </div>
+                                                      <div className="flex items-center space-x-2">
+                                                        <button
+                                                          onClick={() => handleShowExamResults(
+                                                            exam.id, 
+                                                            exam.title, 
+                                                            teacherInfo?.full_name || "Unknown Teacher",
+                                                            teacherInfo?.subject || ""
+                                                          )}
+                                                          className="flex items-center text-sm text-primary-600 hover:text-primary-700"
+                                                        >
+                                                          <History className="w-4 h-4 mr-1" />
+                                                          Results ({resultsCount})
+                                                        </button>
+                                                      </div>
                                                     </div>
+                                                    
                                                     {exam.description && (
                                                       <p className="text-sm text-gray-600 mb-2">{exam.description}</p>
                                                     )}
-                                                    <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+                                                    
+                                                    <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-2">
                                                       {exam.total_marks && (
                                                         <span>Total Marks: {exam.total_marks}</span>
                                                       )}
@@ -1591,30 +1656,58 @@ const StudentDashboard: React.FC = () => {
                                                       {exam.questions_count && (
                                                         <span>Questions: {exam.questions_count}</span>
                                                       )}
-                                                      {examResult && (
-                                                        <span className={`font-medium ${
-                                                          examResult.passed ? 'text-green-600' : 'text-red-600'
-                                                        }`}>
-                                                          Highest Score: {examResult.score}%
-                                                        </span>
+                                                      {teacherInfo?.subject && (
+                                                        <span>Subject: {teacherInfo.subject}</span>
                                                       )}
                                                     </div>
-                                                    {examResult && (
-                                                      <p className="text-xs text-gray-400 mt-2">
-                                                        Last Attempt: {formatDateTime(examResult.submittedAt)}
-                                                      </p>
+                                                    
+                                                    {/* Results Summary */}
+                                                    {resultsCount > 0 && latestResult && (
+                                                      <div className="mt-3 pt-3 border-t border-gray-100">
+                                                        <div className="flex justify-between items-center">
+                                                          <div>
+                                                            <span className="text-sm text-gray-600">Latest: </span>
+                                                            <span className={`text-sm font-medium ${
+                                                              latestResult.score >= 60 ? 'text-green-600' : 'text-red-600'
+                                                            }`}>
+                                                              {latestResult.score}%
+                                                            </span>
+                                                            <span className="text-xs text-gray-500 ml-2">
+                                                              ({formatDate(latestResult.submitted_at)})
+                                                            </span>
+                                                          </div>
+                                                          <div>
+                                                            <span className="text-sm text-gray-600">Highest: </span>
+                                                            <span className={`text-sm font-bold ${
+                                                              highestScore >= 60 ? 'text-green-600' : 'text-red-600'
+                                                            }`}>
+                                                              {highestScore}%
+                                                            </span>
+                                                          </div>
+                                                        </div>
+                                                      </div>
                                                     )}
                                                   </div>
-                                                  <button
-                                                    onClick={() => handleStartExam(exam.id, exam.title, exam.exam_questions || [])}
-                                                    className={`ml-4 px-4 py-2 rounded-md whitespace-nowrap ${
-                                                      examResult
-                                                        ? 'bg-secondary-600 text-white hover:bg-secondary-700'
-                                                        : 'bg-secondary-600 text-white hover:bg-secondary-700'
-                                                    }`}
-                                                  >
-                                                    {examResult ? 'Retake Exam' : 'Start Exam'}
-                                                  </button>
+                                                  
+                                                  <div className="ml-4 flex flex-col space-y-2">
+                                                    <button
+                                                      onClick={() => handleStartExam(
+                                                        exam.id, 
+                                                        exam.title, 
+                                                        sub.teacher_id, 
+                                                        teacherInfo?.full_name || "Unknown Teacher",
+                                                        teacherInfo?.subject,
+                                                        exam.exam_questions || []
+                                                      )}
+                                                      className={`px-4 py-2 rounded-md whitespace-nowrap ${
+                                                        resultsCount > 0
+                                                          ? 'bg-secondary-600 text-white hover:bg-secondary-700'
+                                                          : 'bg-primary-600 text-white hover:bg-primary-700'
+                                                      }`}
+                                                    >
+                                                      {resultsCount > 0 ? 'Retake Exam' : 'Start Exam'}
+                                                    </button>
+                                                  </div>
                                                 </div>
                                               </div>
                                             );
