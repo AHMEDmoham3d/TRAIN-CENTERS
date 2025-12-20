@@ -161,33 +161,6 @@ interface ExamResult {
   };
 }
 
-// Function to convert YouTube URLs to direct video stream URL
-function getDirectVideoUrl(url: string | null): string {
-  if (!url) return "";
-  
-  if (url.includes('.mp4') || url.includes('.webm') || url.includes('.mov') || url.includes('.avi')) {
-    return url;
-  }
-  
-  if (url.includes("youtu.be") || url.includes("youtube.com")) {
-    let videoId = "";
-    
-    if (url.includes("youtu.be")) {
-      videoId = url.split("youtu.be/")[1].split("?")[0];
-    } else if (url.includes("watch?v=")) {
-      videoId = url.split("watch?v=")[1].split("&")[0];
-    } else if (url.includes("youtube.com/embed/")) {
-      videoId = url.split("youtube.com/embed/")[1].split("?")[0];
-    }
-    
-    if (videoId) {
-      return `https://www.youtube-nocookie.com/embed/${videoId}?modestbranding=1&rel=0&controls=1&showinfo=0&fs=1&iv_load_policy=3&disablekb=1`;
-    }
-  }
-  
-  return url;
-}
-
 const StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { centerSlug } = useParams<{ centerSlug: string }>();
@@ -1576,24 +1549,25 @@ const StudentDashboard: React.FC = () => {
                                   {/* Video Player */}
                                   {activeVideo === video.id && video.video_url && (
                                     <div className="p-4 bg-black">
-                                      {video.video_url.includes('.mp4') || video.video_url.includes('.webm') || video.video_url.includes('.mov') || video.video_url.includes('.avi') ? (
-                                        <video
-                                          src={video.video_url}
-                                          title={video.title}
-                                          className="w-full h-64 md:h-96 rounded"
-                                          controls
-                                          preload="metadata"
+                                      <video
+                                        src={video.video_url}
+                                        title={video.title}
+                                        className="w-full h-64 md:h-96 rounded"
+                                        controls
+                                        preload="metadata"
+                                        controlsList="nodownload noplaybackrate"
+                                        disablePictureInPicture
+                                        disableRemotePlayback
+                                      >
+                                        <track
+                                          kind="captions"
+                                          src=""
+                                          srcLang="en"
+                                          label="English"
+                                          default
                                         />
-                                      ) : (
-                                        <iframe
-                                          src={getDirectVideoUrl(video.video_url)}
-                                          title={video.title}
-                                          className="w-full h-64 md:h-96 rounded"
-                                          allowFullScreen
-                                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                          frameBorder="0"
-                                        ></iframe>
-                                      )}
+                                        Your browser does not support the video tag.
+                                      </video>
                                     </div>
                                   )}
 
