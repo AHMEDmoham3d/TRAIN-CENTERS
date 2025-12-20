@@ -1008,38 +1008,60 @@ const StudentDashboard: React.FC = () => {
               {!activeExam.isSubmitted ? (
                 <>
                   {/* Current Question */}
-                  <div className="mb-6">
-                    <h3 className="text-lg font-semibold text-gray-800 mb-4">
-                      {activeExam.currentQuestionIndex + 1}. {activeExam.questions[activeExam.currentQuestionIndex]?.question_text}
-                    </h3>
-                    
+                  <div className="mb-8">
+                    <div className="bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg p-6 mb-6 border border-primary-200">
+                      <div className="flex items-start space-x-3">
+                        <div className="flex-shrink-0 w-8 h-8 bg-primary-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                          {activeExam.currentQuestionIndex + 1}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-xl font-bold text-gray-900 leading-relaxed">
+                            {activeExam.questions[activeExam.currentQuestionIndex]?.question_text}
+                          </h3>
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Options */}
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {activeExam.questions[activeExam.currentQuestionIndex]?.exam_options.map((option, index) => {
                         const questionId = activeExam.questions[activeExam.currentQuestionIndex].id;
                         const isSelected = activeExam.userAnswers[questionId] === option.id;
-                        
+
                         return (
                           <div
                             key={option.id}
                             onClick={() => handleSelectAnswer(questionId, option.id)}
-                            className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            className={`group relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md ${
                               isSelected
-                                ? 'border-primary-600 bg-primary-50'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                ? 'border-primary-600 bg-primary-50 shadow-primary-100 ring-2 ring-primary-200'
+                                : 'border-gray-200 hover:border-primary-300 hover:bg-primary-25 hover:shadow-primary-50'
                             }`}
                           >
-                            <div className="flex items-center">
-                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-3 ${
-                                isSelected ? 'border-primary-600 bg-primary-600' : 'border-gray-400'
+                            <div className="flex items-start space-x-4">
+                              <div className={`flex-shrink-0 w-8 h-8 rounded-full border-3 flex items-center justify-center transition-all duration-200 ${
+                                isSelected
+                                  ? 'border-primary-600 bg-primary-600 text-white shadow-lg'
+                                  : 'border-gray-300 bg-white group-hover:border-primary-400 group-hover:bg-primary-50'
                               }`}>
-                                {isSelected && (
-                                  <div className="w-2 h-2 rounded-full bg-white"></div>
-                                )}
+                                <span className={`font-bold text-sm ${
+                                  isSelected ? 'text-white' : 'text-gray-600 group-hover:text-primary-600'
+                                }`}>
+                                  {String.fromCharCode(65 + index)}
+                                </span>
                               </div>
-                              <span className="font-medium text-gray-800">
-                                {String.fromCharCode(65 + index)}. {option.option_text}
-                              </span>
+                              <div className="flex-1 min-w-0">
+                                <span className={`text-base font-medium leading-relaxed block ${
+                                  isSelected ? 'text-primary-900' : 'text-gray-800 group-hover:text-primary-800'
+                                }`}>
+                                  {option.option_text}
+                                </span>
+                              </div>
+                              {isSelected && (
+                                <div className="flex-shrink-0">
+                                  <CheckCircle className="w-6 h-6 text-primary-600" />
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
