@@ -137,6 +137,18 @@ interface ActiveExamState {
   score?: number;
 }
 
+// Interface for exam result history
+interface ExamResultHistory {
+  id: string;
+  exam_id: string;
+  student_id: string;
+  score: number;
+  submitted_at: string;
+  exam?: {
+    title: string;
+  };
+}
+
 // Function to convert YouTube URLs to direct video stream URL
 function getDirectVideoUrl(url: string | null): string {
   if (!url) return "";
@@ -190,6 +202,10 @@ const StudentDashboard: React.FC = () => {
   // Active exam state
   const [activeExam, setActiveExam] = useState<ActiveExamState | null>(null);
   const [examTimer, setExamTimer] = useState<NodeJS.Timeout | null>(null);
+  
+  // Exam result history state
+  const [examResultHistory, setExamResultHistory] = useState<ExamResultHistory[]>([]);
+  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -222,6 +238,40 @@ const StudentDashboard: React.FC = () => {
 
     fetchCenterInfo();
   }, [centerSlug]);
+
+  useEffect(() => {
+    const fetchExamResultHistory = async () => {
+      if (!user) return;
+
+      try {
+        console.log("📜 Fetching exam result history for student:", user.id);
+        const { data, error } = await supabase
+          .from("exam_results")
+          .select(`
+            id,
+            exam_id,
+            student_id,
+            score,
+            submitted_at,
+            exam:exams(title)
+          `)
+          .eq("student_id", user.id)
+          .order("submitted_at", { ascending: false });
+
+        if (error) {
+          console.error("❌ Error fetching exam result history:", error);
+          return;
+        }
+
+        console.log("📊 Exam result history loaded:", data?.length || 0);
+        setExamResultHistory(data || []);
+      } catch (error) {
+        console.error("🚨 Error fetching exam result history:", error);
+      }
+    };
+
+    fetchExamResultHistory();
+  }, [user, activeExam]);
 
   useEffect(() => {
     const fetchSubscriptionsAndContent = async () => {
@@ -808,100 +858,58 @@ const StudentDashboard: React.FC = () => {
     const score = Math.round((correctAnswers / totalQuestions) * 100);
 
     try {
-      // التحقق إذا كان هناك نتيجة سابقة لهذا الامتحان
-      console.log("🔍 Checking previous exam results for exam:", activeExam.examId);
-      const { data: previousResults, error: checkError } = await supabase
+      // الحصول على وقت التسليم الحالي
+      const submittedAt = new Date().toISOString();
+      
+      // حفظ النتيجة في جدول exam_results
+      console.log("💾 Saving exam result to exam_results table...");
+      const { data, error } = await supabase
         .from("exam_results")
-        .select("id, score")
-        .eq("exam_id", activeExam.examId)
-        .eq("student_id", user.id);
+        .insert({
+          exam_id: activeExam.examId,
+          student_id: user.id,
+          score: score,
+          submitted_at: submittedAt
+        })
+        .select();
 
-      if (checkError) {
-        console.error("❌ Error checking previous results:", checkError);
+      if (error) {
+        console.error("❌ Error saving exam result:", error);
+        toast.error("Failed to save exam result");
+        throw error;
       }
 
-      // إذا كان هناك نتائج سابقة، نتحقق من أعلى درجة
-      let shouldSaveResult = true;
-      if (previousResults && previousResults.length > 0) {
-        const highestPreviousScore = Math.max(...previousResults.map(r => r.score));
-        console.log("📊 Previous highest score:", highestPreviousScore, "Current score:", score);
-        
-        // نحفظ النتيجة فقط إذا كانت أعلى من السابقة
-        if (score > highestPreviousScore) {
-          console.log("🎯 Current score is higher, saving new result");
-          
-          // حذف النتائج السابقة الأقل
-          const resultsToDelete = previousResults.filter(r => r.score < score);
-          for (const result of resultsToDelete) {
-            const { error: deleteError } = await supabase
-              .from("exam_results")
-              .delete()
-              .eq("id", result.id);
-              
-            if (deleteError) {
-              console.error("❌ Error deleting lower score result:", deleteError);
+      console.log("✅ Exam result saved successfully:", data);
+
+      // تحديث نتائج الامتحانات المحلية
+      setExamResults(prev => {
+        const currentHighest = prev[activeExam.examId]?.score || 0;
+        if (score > currentHighest) {
+          return {
+            ...prev,
+            [activeExam.examId]: {
+              score,
+              submitted_at: submittedAt
             }
-          }
-          
-          // حفظ النتيجة الجديدة
-          const { error } = await supabase
-            .from("exam_results")
-            .insert({
-              exam_id: activeExam.examId,
-              student_id: user.id,
-              score: score,
-              submitted_at: new Date().toISOString()
-            });
-
-          if (error) {
-            console.error("❌ Error saving exam result:", error);
-            toast.error("Failed to save exam result");
-          } else {
-            console.log("✅ New highest score saved successfully");
-            toast.success(`Exam submitted! New high score: ${score}%`);
-          }
-        } else {
-          shouldSaveResult = false;
-          console.log("📉 Current score is not higher than previous best, not saving");
-          toast.success(`Exam submitted! Score: ${score}% (Previous best: ${highestPreviousScore}%)`);
+          };
         }
-      } else {
-        // لا توجد نتائج سابقة، نحفظ النتيجة الجديدة
-        console.log("📝 No previous results found, saving new result");
-        const { error } = await supabase
-          .from("exam_results")
-          .insert({
-            exam_id: activeExam.examId,
-            student_id: user.id,
-            score: score,
-            submitted_at: new Date().toISOString()
-          });
+        return prev;
+      });
 
-        if (error) {
-          console.error("❌ Error saving exam result:", error);
-          toast.error("Failed to save exam result");
-        } else {
-          console.log("✅ First exam result saved successfully");
-          toast.success(`Exam submitted! Score: ${score}%`);
-        }
-      }
+      // تحديث سجل النتائج
+      setExamResultHistory(prev => [
+        {
+          id: data[0].id,
+          exam_id: activeExam.examId,
+          student_id: user.id,
+          score: score,
+          submitted_at: submittedAt,
+          exam: { title: activeExam.examTitle }
+        },
+        ...prev
+      ]);
 
-      // تحديث حالة النتائج المحلية (تحديث الدرجة الأعلى فقط)
-      if (shouldSaveResult) {
-        setExamResults(prev => ({
-          ...prev,
-          [activeExam.examId]: {
-            score,
-            submitted_at: new Date().toISOString()
-          }
-        }));
-      } else {
-        // إذا لم نحفظ نتيجة جديدة، نعرض الدرجة الحالية
-        const currentHighest = examResults[activeExam.examId];
-        if (currentHighest) {
-          toast.success(`Your highest score: ${currentHighest.score}%`);
-        }
-      }
+      toast.success(`Exam submitted! Score: ${score}%`);
 
     } catch (error) {
       console.error("🚨 Error submitting exam:", error);
@@ -956,6 +964,22 @@ const StudentDashboard: React.FC = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // دالة لتنسيق التاريخ بشكل أفضل
+  const formatHistoryDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return `Today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else if (diffDays === 1) {
+      return `Yesterday at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    } else {
+      return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
   };
 
   if (loading) {
@@ -1144,7 +1168,7 @@ const StudentDashboard: React.FC = () => {
                     <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
                     <h3 className="text-2xl font-bold text-gray-800 mb-2">Exam Submitted Successfully!</h3>
                     <p className="text-gray-600 mb-6">
-                      Your exam has been submitted and your score has been recorded.
+                      Your exam has been submitted and your score has been recorded in your history.
                     </p>
                   </div>
                   
@@ -1198,8 +1222,120 @@ const StudentDashboard: React.FC = () => {
             {`Welcome, ${user?.name || "Student"}`}
           </h1>
           <p className="mt-1 text-gray-500">{new Date().toLocaleDateString()}</p>
-          <p className="mt-2 text-sm text-primary-600">Center: {centerSubdomain || centerSlug || "Unknown"}</p>
+          <div className="flex justify-between items-center mt-2">
+            <p className="text-sm text-primary-600">Center: {centerSubdomain || centerSlug || "Unknown"}</p>
+            <button
+              onClick={() => setShowHistoryPanel(!showHistoryPanel)}
+              className="text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
+            >
+              {showHistoryPanel ? "Hide Exam History" : "Show Exam History"}
+            </button>
+          </div>
         </div>
+
+        {/* Exam History Panel */}
+        {showHistoryPanel && (
+          <div className="bg-white rounded-lg shadow-card p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+                <Award className="w-6 h-6 mr-2 text-primary-600" />
+                Exam Results History
+              </h2>
+              <span className="text-sm text-gray-500">
+                {examResultHistory.length} exam(s) taken
+              </span>
+            </div>
+
+            {examResultHistory.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Exam
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Score
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Date & Time
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {examResultHistory.map((result) => (
+                      <tr key={result.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">
+                            {result.exam?.title || "Unknown Exam"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className={`text-lg font-bold ${
+                            result.score >= 80 ? 'text-green-600' :
+                            result.score >= 60 ? 'text-blue-600' :
+                            result.score >= 50 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {result.score}%
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {formatHistoryDate(result.submitted_at)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            result.score >= 60
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {result.score >= 60 ? 'Passed' : 'Failed'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Exam History Yet</h3>
+                <p className="text-gray-500">Take your first exam to see your results here!</p>
+              </div>
+            )}
+
+            {/* Highest Scores Summary */}
+            {examResultHistory.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Performance Summary</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="text-sm text-blue-600 font-medium">Total Exams Taken</div>
+                    <div className="text-2xl font-bold text-blue-700">{examResultHistory.length}</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="text-sm text-green-600 font-medium">Average Score</div>
+                    <div className="text-2xl font-bold text-green-700">
+                      {Math.round(examResultHistory.reduce((sum, result) => sum + result.score, 0) / examResultHistory.length)}%
+                    </div>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="text-sm text-purple-600 font-medium">Highest Score</div>
+                    <div className="text-2xl font-bold text-purple-700">
+                      {Math.max(...examResultHistory.map(r => r.score))}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Overview cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
