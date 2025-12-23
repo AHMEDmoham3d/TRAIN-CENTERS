@@ -1549,25 +1549,30 @@ const StudentDashboard: React.FC = () => {
                                   {/* Video Player */}
                                   {activeVideo === video.id && video.video_url && (
                                     <div className="p-4 bg-black">
-                                      <video
-                                        src={video.video_url}
-                                        title={video.title}
-                                        className="w-full h-64 md:h-96 rounded"
-                                        controls
-                                        preload="metadata"
-                                        controlsList="nodownload noplaybackrate"
-                                        disablePictureInPicture
-                                        disableRemotePlayback
-                                      >
-                                        <track
-                                          kind="captions"
-                                          src=""
-                                          srcLang="en"
-                                          label="English"
-                                          default
-                                        />
-                                        Your browser does not support the video tag.
-                                      </video>
+                                      <div className="relative w-full h-64 md:h-96 rounded overflow-hidden">
+                                        <video
+                                          src={video.video_url}
+                                          title={video.title}
+                                          className="absolute inset-0 w-full h-full object-contain bg-black"
+                                          controls
+                                          preload="metadata"
+                                          controlsList="nodownload"
+                                          disablePictureInPicture
+                                          playsInline
+                                        >
+                                          <track
+                                            kind="captions"
+                                            src=""
+                                            srcLang="en"
+                                            label="English"
+                                            default
+                                          />
+                                          Your browser does not support the video tag.
+                                        </video>
+                                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-4">
+                                          <p className="text-white text-sm">{video.title}</p>
+                                        </div>
+                                      </div>
                                     </div>
                                   )}
 
