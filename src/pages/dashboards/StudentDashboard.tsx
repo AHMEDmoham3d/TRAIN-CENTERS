@@ -22,6 +22,7 @@ import {
   EyeOff,
   BarChart3,
   AlertCircle,
+  Video,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -166,33 +167,72 @@ interface ExamResult {
 const getPublicVideoUrl = (videoUrl: string | null): string => {
   if (!videoUrl) return "";
   
-  // Check if it's already a public URL
-  if (videoUrl.startsWith('http')) {
+  console.log("🔗 Original video URL:", videoUrl);
+  
+  // If it's already a full URL starting with http, return it
+  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return videoUrl;
   }
   
-  // If it's a Supabase Storage path, construct the public URL
-  if (videoUrl.includes('supabase.co/storage/v1/object/public/')) {
-    return videoUrl;
+  // If it's a YouTube URL, return empty (we don't want YouTube anymore)
+  if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
+    return "";
   }
   
-  // Extract bucket name and file path from URL
-  if (videoUrl.includes('/storage/v1/object/')) {
-    const parts = videoUrl.split('/storage/v1/object/');
-    if (parts.length > 1) {
-      return `https://${parts[0]}/storage/v1/object/public/${parts[1]}`;
+  // Check if it's a Supabase storage path that needs transformation
+  const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
+  
+  // Case 1: If it's just a filename or path in videos bucket
+  if (videoUrl.includes('videos/') || videoUrl.includes('.mp4') || videoUrl.includes('.mov') || videoUrl.includes('.webm')) {
+    // Extract the filename
+    let filename = videoUrl;
+    
+    // Remove 'videos/' prefix if present
+    if (filename.startsWith('videos/')) {
+      filename = filename.replace('videos/', '');
+    }
+    
+    // Also handle any other prefixes
+    if (filename.includes('/videos/')) {
+      filename = filename.split('/videos/')[1] || filename;
+    }
+    
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+    console.log("📹 Generated public URL from filename:", publicUrl);
+    return publicUrl;
+  }
+  
+  // Case 2: If it's a storage path
+  if (videoUrl.includes('storage/v1/object')) {
+    // Transform from signed URL to public URL
+    if (videoUrl.includes('/storage/v1/object/')) {
+      const parts = videoUrl.split('/storage/v1/object/');
+      if (parts.length > 1) {
+        const [domain, path] = parts;
+        // Replace the path to use public endpoint
+        const publicUrl = `${domain}/storage/v1/object/public/${path}`;
+        console.log("🔄 Transformed signed URL to public:", publicUrl);
+        return publicUrl;
+      }
     }
   }
   
-  // Check if it's a relative path in videos bucket
-  if (videoUrl.startsWith('videos/')) {
-    // استخدم project URL من supabase client
-    const projectUrl = supabase.supabaseUrl;
-    return `${projectUrl}/storage/v1/object/public/videos/${videoUrl.replace('videos/', '')}`;
-  }
-  
-  // Default: return as is
+  // If we can't determine the format, return as is
+  console.log("⚠️ Could not transform URL, returning as is");
   return videoUrl;
+};
+
+// Function to test if video URL is accessible
+const testVideoUrl = async (url: string): Promise<boolean> => {
+  try {
+    if (!url) return false;
+    
+    const response = await fetch(url, { method: 'HEAD' });
+    return response.ok;
+  } catch (error) {
+    console.error("❌ Error testing video URL:", url, error);
+    return false;
+  }
 };
 
 const StudentDashboard: React.FC = () => {
@@ -224,6 +264,10 @@ const StudentDashboard: React.FC = () => {
   const [selectedExamTitle, setSelectedExamTitle] = useState("");
   const [selectedTeacherName, setSelectedTeacherName] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
+
+  // Video loading states
+  const [videoLoading, setVideoLoading] = useState<{[key: string]: boolean}>({});
+  const [videoErrors, setVideoErrors] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -945,8 +989,41 @@ const StudentDashboard: React.FC = () => {
     toast.success(`Downloading ${title}`);
   };
 
-  const handleVideoPlay = (videoId: string) => {
+  const handleVideoPlay = async (videoId: string) => {
     setActiveVideo(activeVideo === videoId ? null : videoId);
+    
+    if (activeVideo !== videoId) {
+      // البحث عن الفيديو
+      let videoUrl = "";
+      subscriptionsData.forEach(sub => {
+        sub.videosWithExams.forEach(video => {
+          if (video.id === videoId && video.video_url) {
+            videoUrl = video.video_url;
+          }
+        });
+      });
+      
+      if (videoUrl) {
+        const publicUrl = getPublicVideoUrl(videoUrl);
+        console.log(`🎬 Testing video URL for ${videoId}:`, publicUrl);
+        
+        setVideoLoading(prev => ({ ...prev, [videoId]: true }));
+        setVideoErrors(prev => ({ ...prev, [videoId]: "" }));
+        
+        // اختبار إذا كان الرابط يعمل
+        const isAccessible = await testVideoUrl(publicUrl);
+        
+        if (!isAccessible) {
+          console.error(`❌ Video URL not accessible: ${publicUrl}`);
+          setVideoErrors(prev => ({ 
+            ...prev, 
+            [videoId]: `Video URL not accessible. Please check if the video file exists in Supabase Storage.` 
+          }));
+        }
+        
+        setVideoLoading(prev => ({ ...prev, [videoId]: false }));
+      }
+    }
   };
 
   const getHighestScore = (examId: string): number => {
@@ -982,28 +1059,6 @@ const StudentDashboard: React.FC = () => {
     } else {
       return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
-  };
-
-  // دالة للتحقق من صحة رابط الفيديو
-  const checkVideoUrl = (videoUrl: string | null): boolean => {
-    if (!videoUrl) return false;
-    
-    // تحقق من أن الرابط يحتوي على امتداد فيديو
-    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.m3u8', '.m4v'];
-    const hasVideoExtension = videoExtensions.some(ext => videoUrl.toLowerCase().includes(ext));
-    
-    if (!hasVideoExtension) {
-      console.warn(`⚠️ Video URL doesn't have a recognized video extension: ${videoUrl}`);
-    }
-    
-    // تحقق من أن الرابط يبدأ بـ http أو https
-    const isValidUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://');
-    
-    if (!isValidUrl) {
-      console.warn(`⚠️ Video URL is not a valid HTTP/HTTPS URL: ${videoUrl}`);
-    }
-    
-    return isValidUrl && hasVideoExtension;
   };
 
   if (loading) {
@@ -1605,49 +1660,60 @@ const StudentDashboard: React.FC = () => {
                                   {/* Video Player */}
                                   {activeVideo === video.id && video.video_url && (
                                     <div className="p-4 bg-black">
-                                      <div className="relative w-full h-64 md:h-96 rounded overflow-hidden bg-black">
-                                        {checkVideoUrl(video.video_url) ? (
+                                      <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
+                                        {videoLoading[video.id] ? (
+                                          <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="text-white text-center">
+                                              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                                              <p>Loading video...</p>
+                                            </div>
+                                          </div>
+                                        ) : videoErrors[video.id] ? (
+                                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                            <Video className="w-16 h-16 text-red-500 mb-4" />
+                                            <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
+                                            <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
+                                            <div className="bg-gray-800 rounded-lg p-4 text-left">
+                                              <p className="text-gray-300 text-xs">Troubleshooting:</p>
+                                              <ul className="text-gray-400 text-xs list-disc list-inside mt-2">
+                                                <li>Check if video exists in Supabase Storage</li>
+                                                <li>Verify Storage bucket policies allow public read</li>
+                                                <li>Ensure video file format is supported (MP4, WebM)</li>
+                                              </ul>
+                                            </div>
+                                          </div>
+                                        ) : (
                                           <>
                                             <video
                                               key={`${video.id}-${Date.now()}`}
                                               src={getPublicVideoUrl(video.video_url)}
                                               title={video.title}
-                                              className="absolute inset-0 w-full h-full object-contain"
+                                              className="absolute inset-0 w-full h-full"
                                               controls
-                                              preload="metadata"
                                               controlsList="nodownload"
-                                              disablePictureInPicture
                                               playsInline
-                                              crossOrigin="anonymous"
+                                              preload="metadata"
                                               onError={(e) => {
-                                                console.error("❌ Video error:", e);
-                                                console.log("Video URL:", video.video_url);
-                                                console.log("Public URL:", getPublicVideoUrl(video.video_url));
-                                                toast.error("Failed to load video. Please check console for details.");
+                                                console.error("❌ Video playback error:", e);
+                                                console.log("Video element error details:", e.target);
+                                                setVideoErrors(prev => ({ 
+                                                  ...prev, 
+                                                  [video.id]: "Failed to load video. The file may be corrupted or in an unsupported format." 
+                                                }));
                                               }}
-                                              onCanPlay={() => console.log("✅ Video can play:", video.title)}
-                                              onLoadedData={() => console.log("📊 Video data loaded:", video.title)}
+                                              onCanPlay={() => {
+                                                console.log("✅ Video can play:", video.title);
+                                              }}
+                                              onLoadedData={() => {
+                                                console.log("📊 Video data loaded successfully:", video.title);
+                                              }}
                                             >
-                                              <source src={getPublicVideoUrl(video.video_url)} type="video/mp4" />
-                                              <source src={getPublicVideoUrl(video.video_url)} type="video/webm" />
-                                              <source src={getPublicVideoUrl(video.video_url)} type="video/ogg" />
                                               Your browser does not support the video tag.
                                             </video>
-                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                                               <p className="text-white text-sm font-medium">{video.title}</p>
                                             </div>
                                           </>
-                                        ) : (
-                                          <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
-                                            <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-                                            <p className="text-lg font-semibold mb-2">Invalid Video URL</p>
-                                            <p className="text-sm text-center">
-                                              The video URL is not properly formatted. Please contact support.
-                                            </p>
-                                            <p className="text-xs mt-2 text-gray-300">
-                                              URL: {video.video_url.substring(0, 50)}...
-                                            </p>
-                                          </div>
                                         )}
                                       </div>
                                     </div>
