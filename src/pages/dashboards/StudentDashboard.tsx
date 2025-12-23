@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   BarChart3,
+  AlertCircle,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -160,6 +161,39 @@ interface ExamResult {
     };
   };
 }
+
+// Function to get public URL from Supabase Storage
+const getPublicVideoUrl = (videoUrl: string | null): string => {
+  if (!videoUrl) return "";
+  
+  // Check if it's already a public URL
+  if (videoUrl.startsWith('http')) {
+    return videoUrl;
+  }
+  
+  // If it's a Supabase Storage path, construct the public URL
+  if (videoUrl.includes('supabase.co/storage/v1/object/public/')) {
+    return videoUrl;
+  }
+  
+  // Extract bucket name and file path from URL
+  if (videoUrl.includes('/storage/v1/object/')) {
+    const parts = videoUrl.split('/storage/v1/object/');
+    if (parts.length > 1) {
+      return `https://${parts[0]}/storage/v1/object/public/${parts[1]}`;
+    }
+  }
+  
+  // Check if it's a relative path in videos bucket
+  if (videoUrl.startsWith('videos/')) {
+    // استخدم project URL من supabase client
+    const projectUrl = supabase.supabaseUrl;
+    return `${projectUrl}/storage/v1/object/public/videos/${videoUrl.replace('videos/', '')}`;
+  }
+  
+  // Default: return as is
+  return videoUrl;
+};
 
 const StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
@@ -950,6 +984,28 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
+  // دالة للتحقق من صحة رابط الفيديو
+  const checkVideoUrl = (videoUrl: string | null): boolean => {
+    if (!videoUrl) return false;
+    
+    // تحقق من أن الرابط يحتوي على امتداد فيديو
+    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.m3u8', '.m4v'];
+    const hasVideoExtension = videoExtensions.some(ext => videoUrl.toLowerCase().includes(ext));
+    
+    if (!hasVideoExtension) {
+      console.warn(`⚠️ Video URL doesn't have a recognized video extension: ${videoUrl}`);
+    }
+    
+    // تحقق من أن الرابط يبدأ بـ http أو https
+    const isValidUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://');
+    
+    if (!isValidUrl) {
+      console.warn(`⚠️ Video URL is not a valid HTTP/HTTPS URL: ${videoUrl}`);
+    }
+    
+    return isValidUrl && hasVideoExtension;
+  };
+
   if (loading) {
     return (
       <DashboardLayout>
@@ -1549,29 +1605,50 @@ const StudentDashboard: React.FC = () => {
                                   {/* Video Player */}
                                   {activeVideo === video.id && video.video_url && (
                                     <div className="p-4 bg-black">
-                                      <div className="relative w-full h-64 md:h-96 rounded overflow-hidden">
-                                        <video
-                                          src={video.video_url}
-                                          title={video.title}
-                                          className="absolute inset-0 w-full h-full object-contain bg-black"
-                                          controls
-                                          preload="metadata"
-                                          controlsList="nodownload"
-                                          disablePictureInPicture
-                                          playsInline
-                                        >
-                                          <track
-                                            kind="captions"
-                                            src=""
-                                            srcLang="en"
-                                            label="English"
-                                            default
-                                          />
-                                          Your browser does not support the video tag.
-                                        </video>
-                                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-4">
-                                          <p className="text-white text-sm">{video.title}</p>
-                                        </div>
+                                      <div className="relative w-full h-64 md:h-96 rounded overflow-hidden bg-black">
+                                        {checkVideoUrl(video.video_url) ? (
+                                          <>
+                                            <video
+                                              key={`${video.id}-${Date.now()}`}
+                                              src={getPublicVideoUrl(video.video_url)}
+                                              title={video.title}
+                                              className="absolute inset-0 w-full h-full object-contain"
+                                              controls
+                                              preload="metadata"
+                                              controlsList="nodownload"
+                                              disablePictureInPicture
+                                              playsInline
+                                              crossOrigin="anonymous"
+                                              onError={(e) => {
+                                                console.error("❌ Video error:", e);
+                                                console.log("Video URL:", video.video_url);
+                                                console.log("Public URL:", getPublicVideoUrl(video.video_url));
+                                                toast.error("Failed to load video. Please check console for details.");
+                                              }}
+                                              onCanPlay={() => console.log("✅ Video can play:", video.title)}
+                                              onLoadedData={() => console.log("📊 Video data loaded:", video.title)}
+                                            >
+                                              <source src={getPublicVideoUrl(video.video_url)} type="video/mp4" />
+                                              <source src={getPublicVideoUrl(video.video_url)} type="video/webm" />
+                                              <source src={getPublicVideoUrl(video.video_url)} type="video/ogg" />
+                                              Your browser does not support the video tag.
+                                            </video>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-3">
+                                              <p className="text-white text-sm font-medium">{video.title}</p>
+                                            </div>
+                                          </>
+                                        ) : (
+                                          <div className="absolute inset-0 flex flex-col items-center justify-center text-white p-4">
+                                            <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+                                            <p className="text-lg font-semibold mb-2">Invalid Video URL</p>
+                                            <p className="text-sm text-center">
+                                              The video URL is not properly formatted. Please contact support.
+                                            </p>
+                                            <p className="text-xs mt-2 text-gray-300">
+                                              URL: {video.video_url.substring(0, 50)}...
+                                            </p>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   )}
