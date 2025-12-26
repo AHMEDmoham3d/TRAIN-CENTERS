@@ -183,14 +183,54 @@ const extractYouTubeVideoId = (url: string | null): string | null => {
   return null;
 };
 
-// Function to get public URL from Supabase Storage
-const getPublicVideoUrl = (videoUrl: string | null): string | null => {
-  if (!videoUrl) return null;
+// Function to get secure video stream URL
+const getSecureVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
+  if (!videoUrl) return { url: null, type: 'unknown' };
   
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return videoUrl;
+  // Check if it's a YouTube URL
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+  if (youtubeId) {
+    // Use a proxy service to stream YouTube video without showing YouTube
+    // You can use services like:
+    // 1. youtube-dl proxy
+    // 2. Custom proxy server
+    // 3. Alternative embedding methods
+    
+    // For now, we'll use a very restrictive YouTube embed with custom domain
+    const proxyUrl = `https://www.youtube-nocookie.com/embed/${youtubeId}?`;
+    const params = new URLSearchParams({
+      'autoplay': '1',
+      'playsinline': '1',
+      'controls': '1',
+      'disablekb': '1',
+      'fs': '0',
+      'modestbranding': '1',
+      'rel': '0',
+      'showinfo': '0',
+      'iv_load_policy': '3',
+      'cc_load_policy': '0',
+      'color': 'white',
+      'theme': 'light',
+      'enablejsapi': '0',
+      'origin': window.location.origin,
+      'widget_referrer': window.location.origin,
+      'mute': '0',
+      'loop': '0',
+      'playlist': '',
+    });
+    
+    return { 
+      url: `${proxyUrl}${params.toString()}`,
+      type: 'youtube'
+    };
   }
   
+  // Check if it's already a full URL
+  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+    return { url: videoUrl, type: 'direct' };
+  }
+  
+  // Try to get Supabase URL
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
   if (videoUrl.includes('.mp4') || videoUrl.includes('.webm') || videoUrl.includes('.mov')) {
@@ -200,12 +240,14 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
       filename = parts[parts.length - 1];
     }
     
-    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+    return { url: publicUrl, type: 'supabase' };
   }
   
   if (videoUrl.startsWith('videos/')) {
     const filename = videoUrl.replace('videos/', '');
-    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+    return { url: publicUrl, type: 'supabase' };
   }
   
   if (videoUrl.includes('storage/v1/object')) {
@@ -213,123 +255,164 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
       const parts = videoUrl.split('/storage/v1/object/');
       if (parts.length > 1) {
         const [domain, path] = parts;
-        return `${domain}/storage/v1/object/public/${path}`;
+        const publicUrl = `${domain}/storage/v1/object/public/${path}`;
+        return { url: publicUrl, type: 'supabase' };
       }
     }
   }
   
-  return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
+  return { url: null, type: 'unknown' };
 };
 
-// Function to get proper video URL based on source
-const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
-  if (!videoUrl) return { url: null, type: 'unknown' };
-  
-  const youtubeId = extractYouTubeVideoId(videoUrl);
-  if (youtubeId) {
-    return { 
-      url: youtubeId, 
-      type: 'youtube' 
-    };
-  }
-  
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return { url: videoUrl, type: 'direct' };
-  }
-  
-  const supabaseUrl = getPublicVideoUrl(videoUrl);
-  return { url: supabaseUrl, type: 'supabase' };
-};
+// Component for Secure Video Player
+const SecureVideoPlayer: React.FC<{ 
+  videoInfo: { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' }; 
+  title: string;
+  videoId: string;
+}> = ({ videoInfo, title, videoId }) => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
 
-// Function to create secure YouTube embed URL - إعدادات شديدة التقييد
-const getYouTubeEmbedUrl = (videoId: string): string => {
-  const params = new URLSearchParams({
-    'autoplay': '1',
-    'playsinline': '1',
-    'controls': '1',
-    'disablekb': '1', // تعطيل مفاتيح لوحة المفاتيح
-    'fs': '0', // إخفاء زر ملء الشاشة
-    'modestbranding': '1', // تقليل الشعار
-    'rel': '0', // إخفاء الفيديوهات المقترحة
-    'showinfo': '0', // إخفاء معلومات الفيديو
-    'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
-    'cc_load_policy': '0', // إخفاء الترجمة
-    'color': 'white',
-    'theme': 'light',
-    'enablejsapi': '0', // تعطيل JavaScript API لمنع التحكم
-    'origin': window.location.origin,
-    'widget_referrer': window.location.origin,
-    'mute': '0',
-    'loop': '0',
-    'playlist': '', // منع إنشاء قائمة تشغيل
-  });
-
-  // استخدام نطاق youtube-nocookie مع المزيد من التقييدات
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-};
-
-// Component for Secure YouTube Player
-const SecureYouTubePlayer: React.FC<{ videoId: string; title: string }> = ({ videoId, title }) => {
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
-
-  React.useEffect(() => {
-    const handleIframeClick = (e: MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const iframe = iframeRef.current;
-    if (iframe) {
-      iframe.addEventListener('click', handleIframeClick);
-      iframe.addEventListener('contextmenu', handleIframeClick);
-      
-      return () => {
-        iframe.removeEventListener('click', handleIframeClick);
-        iframe.removeEventListener('contextmenu', handleIframeClick);
-      };
+  // Handle fullscreen
+  const handleFullscreen = () => {
+    if (!containerRef.current) return;
+    
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen()
+        .then(() => setIsFullscreen(true))
+        .catch(err => console.error("Fullscreen error:", err));
+    } else {
+      document.exitFullscreen()
+        .then(() => setIsFullscreen(false))
+        .catch(err => console.error("Exit fullscreen error:", err));
     }
+  };
+
+  // Handle keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Block YouTube keyboard shortcuts
+      if (e.key === 'k' || e.key === 'K' || 
+          e.key === ' ' || 
+          e.key === 'f' || e.key === 'F' ||
+          e.key === 't' || e.key === 'T' ||
+          e.key === 'm' || e.key === 'M' ||
+          e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return (
-    <div className="relative w-full h-full">
-      {/* Protective overlay to prevent interaction */}
+  // Handle right click
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  };
+
+  if (!videoInfo.url) {
+    return (
+      <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+        <Video className="w-16 h-16 text-yellow-500 mb-4" />
+        <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
+        <p className="text-gray-300 text-sm">This video cannot be loaded at the moment.</p>
+      </div>
+    );
+  }
+
+  if (videoInfo.type === 'youtube') {
+    return (
       <div 
-        className="absolute inset-0 z-20"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        style={{
-          pointerEvents: 'auto',
-          cursor: 'default'
-        }}
-      />
-      
-      {/* YouTube iframe with maximum restrictions */}
-      <iframe
-        ref={iframeRef}
-        src={getYouTubeEmbedUrl(videoId)}
+        ref={containerRef}
+        className="relative w-full h-full overflow-hidden"
+        onContextMenu={handleContextMenu}
+      >
+        {/* Custom overlay to block all YouTube interactions */}
+        <div 
+          className="absolute inset-0 z-50"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          style={{
+            pointerEvents: 'none', // Allow video controls to work
+          }}
+        />
+        
+        {/* Custom controls overlay */}
+        <div className="absolute top-0 left-0 right-0 z-40 p-4 bg-gradient-to-b from-black/80 to-transparent">
+          <div className="flex justify-between items-center">
+            <h3 className="text-white text-lg font-semibold">{title}</h3>
+            <button
+              onClick={handleFullscreen}
+              className="bg-black/50 text-white p-2 rounded-md hover:bg-black/70 transition-colors"
+            >
+              {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            </button>
+          </div>
+        </div>
+        
+        {/* YouTube iframe with maximum restrictions */}
+        <iframe
+          key={`youtube-${videoId}`}
+          src={videoInfo.url}
+          title={title}
+          className="absolute inset-0 w-full h-full z-10"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen={false}
+          referrerPolicy="strict-origin-when-cross-origin"
+          sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-presentation"
+          scrolling="no"
+          loading="lazy"
+          style={{
+            pointerEvents: 'auto'
+          }}
+        />
+        
+        {/* Bottom info bar */}
+        <div className="absolute bottom-0 left-0 right-0 z-40 p-4 bg-gradient-to-t from-black/80 to-transparent">
+          <p className="text-gray-300 text-sm">Streaming securely...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // For direct/MP4 videos
+  return (
+    <div 
+      ref={containerRef}
+      className="relative w-full h-full"
+      onContextMenu={handleContextMenu}
+    >
+      <video
+        key={`direct-${videoId}`}
+        src={videoInfo.url}
         title={title}
-        className="absolute inset-0 w-full h-full z-10"
-        frameBorder="0"
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen={false} // منع ملء الشاشة
-        referrerPolicy="no-referrer"
-        sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-        scrolling="no"
-        loading="lazy"
-        style={{
-          pointerEvents: 'auto'
-        }}
-      />
+        className="absolute inset-0 w-full h-full"
+        controls
+        controlsList="nodownload noplaybackrate nofullscreen"
+        playsInline
+        preload="metadata"
+      >
+        Your browser does not support the video tag.
+      </video>
+      
+      {/* Custom fullscreen button for direct videos */}
+      <button
+        onClick={handleFullscreen}
+        className="absolute top-4 right-4 z-40 bg-black/50 text-white p-2 rounded-md hover:bg-black/70 transition-colors"
+      >
+        {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+      </button>
     </div>
   );
 };
@@ -367,6 +450,7 @@ const StudentDashboard: React.FC = () => {
   // Video loading states
   const [videoLoading, setVideoLoading] = useState<{[key: string]: boolean}>({});
   const [videoErrors, setVideoErrors] = useState<{[key: string]: string}>({});
+  const [videoInfoCache, setVideoInfoCache] = useState<{[key: string]: { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' }}>({});
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -994,12 +1078,16 @@ const StudentDashboard: React.FC = () => {
     toast.success(`Downloading ${title}`);
   };
 
-  const handleVideoPlay = (videoId: string) => {
+  const handleVideoPlay = (videoId: string, videoUrl: string | null) => {
     setActiveVideo(activeVideo === videoId ? null : videoId);
     
-    if (activeVideo !== videoId) {
+    if (activeVideo !== videoId && videoUrl) {
       setVideoLoading(prev => ({ ...prev, [videoId]: true }));
       setVideoErrors(prev => ({ ...prev, [videoId]: "" }));
+      
+      // Get secure video URL
+      const videoInfo = getSecureVideoUrl(videoUrl);
+      setVideoInfoCache(prev => ({ ...prev, [videoId]: videoInfo }));
       
       setTimeout(() => {
         setVideoLoading(prev => ({ ...prev, [videoId]: false }));
@@ -1612,223 +1700,187 @@ const StudentDashboard: React.FC = () => {
                             </div>
                           ) : sub.videosWithExams.length > 0 ? (
                             <div className="space-y-6">
-                              {sub.videosWithExams.map((video) => {
-                                const videoInfo = getVideoUrl(video.video_url);
-                                
-                                return (
-                                  <div key={video.id} className="border rounded-lg overflow-hidden">
-                                    {/* Video Section */}
-                                    <div 
-                                      className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
-                                      onClick={() => handleVideoPlay(video.id)}
-                                    >
-                                      <div className="flex justify-between items-center">
-                                        <div className="flex items-center space-x-3">
-                                          <Play className="w-5 h-5 text-primary-600" />
-                                          <div>
-                                            <h5 className="font-semibold text-gray-900">{video.title}</h5>
-                                            {video.description && (
-                                              <p className="text-sm text-gray-600 mt-1">{video.description}</p>
-                                            )}
-                                            <p className="text-xs text-gray-500 mt-1">
-                                              Uploaded: {formatDateTime(video.uploaded_at)}
-                                            </p>
-                                          </div>
+                              {sub.videosWithExams.map((video) => (
+                                <div key={video.id} className="border rounded-lg overflow-hidden">
+                                  {/* Video Section */}
+                                  <div 
+                                    className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
+                                    onClick={() => handleVideoPlay(video.id, video.video_url)}
+                                  >
+                                    <div className="flex justify-between items-center">
+                                      <div className="flex items-center space-x-3">
+                                        <Play className="w-5 h-5 text-primary-600" />
+                                        <div>
+                                          <h5 className="font-semibold text-gray-900">{video.title}</h5>
+                                          {video.description && (
+                                            <p className="text-sm text-gray-600 mt-1">{video.description}</p>
+                                          )}
+                                          <p className="text-xs text-gray-500 mt-1">
+                                            Uploaded: {formatDateTime(video.uploaded_at)}
+                                          </p>
                                         </div>
-                                        <div className="text-sm text-gray-500">
-                                          {activeVideo === video.id ? 'Hide Video' : 'Show Video'}
-                                        </div>
+                                      </div>
+                                      <div className="text-sm text-gray-500">
+                                        {activeVideo === video.id ? 'Hide Video' : 'Show Video'}
                                       </div>
                                     </div>
+                                  </div>
 
-                                    {/* Video Player */}
-                                    {activeVideo === video.id && video.video_url && (
-                                      <div className="p-4 bg-black">
-                                        <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
-                                          {videoLoading[video.id] ? (
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                              <div className="text-white text-center">
-                                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                                                <p>Loading video...</p>
-                                              </div>
+                                  {/* Video Player */}
+                                  {activeVideo === video.id && video.video_url && (
+                                    <div className="p-4 bg-black">
+                                      <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
+                                        {videoLoading[video.id] ? (
+                                          <div className="absolute inset-0 flex items-center justify-center">
+                                            <div className="text-white text-center">
+                                              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                                              <p>Loading secure video...</p>
                                             </div>
-                                          ) : videoErrors[video.id] ? (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-red-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
-                                              <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
-                                            </div>
-                                          ) : videoInfo.url ? (
-                                            <>
-                                              {videoInfo.type === 'youtube' ? (
-                                                // استخدام مكون SecureYouTubePlayer المخصص
-                                                <SecureYouTubePlayer 
-                                                  videoId={videoInfo.url} 
-                                                  title={video.title}
-                                                />
-                                              ) : (
-                                                // Direct/MP4 Video Player
-                                                <video
-                                                  key={`${video.id}-${Date.now()}`}
-                                                  src={videoInfo.url}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  controls
-                                                  controlsList="nodownload noplaybackrate"
-                                                  playsInline
-                                                  preload="metadata"
-                                                  onError={(e) => {
-                                                    setVideoErrors(prev => ({ 
-                                                      ...prev, 
-                                                      [video.id]: "Failed to load video. Please try again later." 
-                                                    }));
-                                                  }}
-                                                >
-                                                  Your browser does not support the video tag.
-                                                </video>
-                                              )}
-                                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  {videoInfo.type === 'youtube' ? 'Video protected by secure player' : 
-                                                   videoInfo.type === 'supabase' ? 'Supabase Storage' : 
-                                                   'Direct Video'}
-                                                </p>
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-yellow-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
-                                              <p className="text-gray-300 text-sm">This video is currently unavailable.</p>
-                                            </div>
-                                          )}
-                                        </div>
+                                          </div>
+                                        ) : videoErrors[video.id] ? (
+                                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                            <Video className="w-16 h-16 text-red-500 mb-4" />
+                                            <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
+                                            <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
+                                          </div>
+                                        ) : videoInfoCache[video.id] ? (
+                                          <SecureVideoPlayer 
+                                            videoInfo={videoInfoCache[video.id]}
+                                            title={video.title}
+                                            videoId={video.id}
+                                          />
+                                        ) : (
+                                          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                                            <Video className="w-16 h-16 text-yellow-500 mb-4" />
+                                            <p className="text-white text-lg font-semibold mb-2">Preparing Video</p>
+                                            <p className="text-gray-300 text-sm">Setting up secure streaming...</p>
+                                          </div>
+                                        )}
                                       </div>
-                                    )}
+                                    </div>
+                                  )}
 
-                                    {/* Exams for this Video */}
-                                    {video.exams.length > 0 && (
-                                      <div className="border-t">
-                                        <div className="p-4 bg-blue-50">
-                                          <h6 className="font-semibold text-gray-800 mb-3 flex items-center">
-                                            <FileText className="w-4 h-4 mr-2 text-blue-600" />
-                                            Exams for this video ({video.exams.length})
-                                          </h6>
-                                          <div className="space-y-3">
-                                            {video.exams.map((exam) => {
-                                              const highestScore = getHighestScore(exam.id);
-                                              const latestResult = getLatestResult(exam.id);
-                                              const resultsCount = examResults[exam.id]?.length || 0;
-                                              const teacherInfo = sub.teacher;
-                                              
-                                              return (
-                                                <div key={exam.id} className="bg-white rounded-lg p-4 border">
-                                                  <div className="flex justify-between items-start">
-                                                    <div className="flex-1">
-                                                      <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center space-x-2">
-                                                          <p className="font-medium text-gray-900">{exam.title}</p>
-                                                          {highestScore > 0 && (
-                                                            <CheckCircle className="w-4 h-4 text-green-600" />
+                                  {/* Exams for this Video */}
+                                  {video.exams.length > 0 && (
+                                    <div className="border-t">
+                                      <div className="p-4 bg-blue-50">
+                                        <h6 className="font-semibold text-gray-800 mb-3 flex items-center">
+                                          <FileText className="w-4 h-4 mr-2 text-blue-600" />
+                                          Exams for this video ({video.exams.length})
+                                        </h6>
+                                        <div className="space-y-3">
+                                          {video.exams.map((exam) => {
+                                            const highestScore = getHighestScore(exam.id);
+                                            const latestResult = getLatestResult(exam.id);
+                                            const resultsCount = examResults[exam.id]?.length || 0;
+                                            const teacherInfo = sub.teacher;
+                                            
+                                            return (
+                                              <div key={exam.id} className="bg-white rounded-lg p-4 border">
+                                                <div className="flex justify-between items-start">
+                                                  <div className="flex-1">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                      <div className="flex items-center space-x-2">
+                                                        <p className="font-medium text-gray-900">{exam.title}</p>
+                                                        {highestScore > 0 && (
+                                                          <CheckCircle className="w-4 h-4 text-green-600" />
+                                                        )}
+                                                      </div>
+                                                      <div className="flex items-center space-x-2">
+                                                        <button
+                                                          onClick={() => handleShowExamResults(
+                                                            exam.id, 
+                                                            exam.title, 
+                                                            teacherInfo?.full_name || "Unknown Teacher",
+                                                            teacherInfo?.subject || ""
                                                           )}
-                                                        </div>
-                                                        <div className="flex items-center space-x-2">
-                                                          <button
-                                                            onClick={() => handleShowExamResults(
-                                                              exam.id, 
-                                                              exam.title, 
-                                                              teacherInfo?.full_name || "Unknown Teacher",
-                                                              teacherInfo?.subject || ""
-                                                            )}
-                                                            className="flex items-center text-sm text-primary-600 hover:text-primary-700"
-                                                          >
-                                                            <History className="w-4 h-4 mr-1" />
-                                                            Results ({resultsCount})
-                                                          </button>
-                                                        </div>
+                                                          className="flex items-center text-sm text-primary-600 hover:text-primary-700"
+                                                        >
+                                                          <History className="w-4 h-4 mr-1" />
+                                                          Results ({resultsCount})
+                                                        </button>
                                                       </div>
-                                                      
-                                                      {exam.description && (
-                                                        <p className="text-sm text-gray-600 mb-2">{exam.description}</p>
+                                                    </div>
+                                                    
+                                                    {exam.description && (
+                                                      <p className="text-sm text-gray-600 mb-2">{exam.description}</p>
+                                                    )}
+                                                    
+                                                    <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-2">
+                                                      {exam.total_marks && (
+                                                        <span>Total Marks: {exam.total_marks}</span>
                                                       )}
-                                                      
-                                                      <div className="flex flex-wrap gap-4 text-sm text-gray-500 mb-2">
-                                                        {exam.total_marks && (
-                                                          <span>Total Marks: {exam.total_marks}</span>
-                                                        )}
-                                                        {exam.duration_minutes && (
-                                                          <span className="flex items-center">
-                                                            <Clock className="w-4 h-4 mr-1" />
-                                                            {exam.duration_minutes} minutes
-                                                          </span>
-                                                        )}
-                                                        {exam.questions_count && (
-                                                          <span>Questions: {exam.questions_count}</span>
-                                                        )}
-                                                        {teacherInfo?.subject && (
-                                                          <span>Subject: {teacherInfo.subject}</span>
-                                                        )}
-                                                      </div>
-                                                      
-                                                      {/* Results Summary */}
-                                                      {resultsCount > 0 && latestResult && (
-                                                        <div className="mt-3 pt-3 border-t border-gray-100">
-                                                          <div className="flex justify-between items-center">
-                                                            <div>
-                                                              <span className="text-sm text-gray-600">Latest: </span>
-                                                              <span className={`text-sm font-medium ${
-                                                                latestResult.score >= 60 ? 'text-green-600' : 'text-red-600'
-                                                              }`}>
-                                                                {latestResult.score}%
-                                                              </span>
-                                                              <span className="text-xs text-gray-500 ml-2">
-                                                                ({formatDate(latestResult.submitted_at)})
-                                                              </span>
-                                                            </div>
-                                                            <div>
-                                                              <span className="text-sm text-gray-600">Highest: </span>
-                                                              <span className={`text-sm font-bold ${
-                                                                highestScore >= 60 ? 'text-green-600' : 'text-red-600'
-                                                              }`}>
-                                                                {highestScore}%
-                                                              </span>
-                                                            </div>
-                                                          </div>
-                                                        </div>
+                                                      {exam.duration_minutes && (
+                                                        <span className="flex items-center">
+                                                          <Clock className="w-4 h-4 mr-1" />
+                                                          {exam.duration_minutes} minutes
+                                                        </span>
+                                                      )}
+                                                      {exam.questions_count && (
+                                                        <span>Questions: {exam.questions_count}</span>
+                                                      )}
+                                                      {teacherInfo?.subject && (
+                                                        <span>Subject: {teacherInfo.subject}</span>
                                                       )}
                                                     </div>
                                                     
-                                                    <div className="ml-4 flex flex-col space-y-2">
-                                                      <button
-                                                        onClick={() => handleStartExam(
-                                                          exam.id, 
-                                                          exam.title, 
-                                                          sub.teacher_id, 
-                                                          teacherInfo?.full_name || "Unknown Teacher",
-                                                          teacherInfo?.subject,
-                                                          exam.exam_questions || []
-                                                        )}
-                                                        className={`px-4 py-2 rounded-md whitespace-nowrap ${
-                                                          resultsCount > 0
-                                                            ? 'bg-secondary-600 text-white hover:bg-secondary-700'
-                                                            : 'bg-primary-600 text-white hover:bg-primary-700'
-                                                        }`}
-                                                      >
-                                                        {resultsCount > 0 ? 'Retake Exam' : 'Start Exam'}
-                                                      </button>
-                                                    </div>
+                                                    {/* Results Summary */}
+                                                    {resultsCount > 0 && latestResult && (
+                                                      <div className="mt-3 pt-3 border-t border-gray-100">
+                                                        <div className="flex justify-between items-center">
+                                                          <div>
+                                                            <span className="text-sm text-gray-600">Latest: </span>
+                                                            <span className={`text-sm font-medium ${
+                                                              latestResult.score >= 60 ? 'text-green-600' : 'text-red-600'
+                                                            }`}>
+                                                              {latestResult.score}%
+                                                            </span>
+                                                            <span className="text-xs text-gray-500 ml-2">
+                                                              ({formatDate(latestResult.submitted_at)})
+                                                            </span>
+                                                          </div>
+                                                          <div>
+                                                            <span className="text-sm text-gray-600">Highest: </span>
+                                                            <span className={`text-sm font-bold ${
+                                                              highestScore >= 60 ? 'text-green-600' : 'text-red-600'
+                                                            }`}>
+                                                              {highestScore}%
+                                                            </span>
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                  
+                                                  <div className="ml-4 flex flex-col space-y-2">
+                                                    <button
+                                                      onClick={() => handleStartExam(
+                                                        exam.id, 
+                                                        exam.title, 
+                                                        sub.teacher_id, 
+                                                        teacherInfo?.full_name || "Unknown Teacher",
+                                                        teacherInfo?.subject,
+                                                        exam.exam_questions || []
+                                                      )}
+                                                      className={`px-4 py-2 rounded-md whitespace-nowrap ${
+                                                        resultsCount > 0
+                                                          ? 'bg-secondary-600 text-white hover:bg-secondary-700'
+                                                          : 'bg-primary-600 text-white hover:bg-primary-700'
+                                                      }`}
+                                                    >
+                                                      {resultsCount > 0 ? 'Retake Exam' : 'Start Exam'}
+                                                    </button>
                                                   </div>
                                                 </div>
-                                              );
-                                            })}
-                                          </div>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           ) : (
                             <p className="text-gray-500 text-center py-4">No videos available for this subscription</p>
