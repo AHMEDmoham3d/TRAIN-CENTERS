@@ -241,9 +241,8 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Function to create secure YouTube embed URL
+// Function to create secure YouTube embed URL - إعدادات شديدة التقييد
 const getYouTubeEmbedUrl = (videoId: string): string => {
-  // إعدادات لإخفاء كل عناصر YouTube
   const params = new URLSearchParams({
     'autoplay': '1',
     'playsinline': '1',
@@ -255,14 +254,84 @@ const getYouTubeEmbedUrl = (videoId: string): string => {
     'showinfo': '0', // إخفاء معلومات الفيديو
     'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
     'cc_load_policy': '0', // إخفاء الترجمة
-    'color': 'white', // لون شريط التشغيل
-    'theme': 'light', // موضوع فاتح
-    'enablejsapi': '1', // تمكين JavaScript API للتحكم
-    'origin': window.location.origin, // تقييد الأصل
-    'widget_referrer': window.location.origin, // تقييد المرجع
+    'color': 'white',
+    'theme': 'light',
+    'enablejsapi': '0', // تعطيل JavaScript API لمنع التحكم
+    'origin': window.location.origin,
+    'widget_referrer': window.location.origin,
+    'mute': '0',
+    'loop': '0',
+    'playlist': '', // منع إنشاء قائمة تشغيل
   });
 
+  // استخدام نطاق youtube-nocookie مع المزيد من التقييدات
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+};
+
+// Component for Secure YouTube Player
+const SecureYouTubePlayer: React.FC<{ videoId: string; title: string }> = ({ videoId, title }) => {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  React.useEffect(() => {
+    const handleIframeClick = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const iframe = iframeRef.current;
+    if (iframe) {
+      iframe.addEventListener('click', handleIframeClick);
+      iframe.addEventListener('contextmenu', handleIframeClick);
+      
+      return () => {
+        iframe.removeEventListener('click', handleIframeClick);
+        iframe.removeEventListener('contextmenu', handleIframeClick);
+      };
+    }
+  }, []);
+
+  return (
+    <div className="relative w-full h-full">
+      {/* Protective overlay to prevent interaction */}
+      <div 
+        className="absolute inset-0 z-20"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        style={{
+          pointerEvents: 'auto',
+          cursor: 'default'
+        }}
+      />
+      
+      {/* YouTube iframe with maximum restrictions */}
+      <iframe
+        ref={iframeRef}
+        src={getYouTubeEmbedUrl(videoId)}
+        title={title}
+        className="absolute inset-0 w-full h-full z-10"
+        frameBorder="0"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen={false} // منع ملء الشاشة
+        referrerPolicy="no-referrer"
+        sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+        scrolling="no"
+        loading="lazy"
+        style={{
+          pointerEvents: 'auto'
+        }}
+      />
+    </div>
+  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -1592,30 +1661,11 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                // YouTube Secure Embedded Player - بدون أي عناصر YouTube
-                                                <div className="absolute inset-0 w-full h-full">
-                                                  <iframe
-                                                    src={getYouTubeEmbedUrl(videoInfo.url)}
-                                                    title={video.title}
-                                                    className="absolute inset-0 w-full h-full"
-                                                    frameBorder="0"
-                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                    allowFullScreen
-                                                    referrerPolicy="strict-origin-when-cross-origin"
-                                                    sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
-                                                    style={{
-                                                      pointerEvents: 'auto'
-                                                    }}
-                                                  ></iframe>
-                                                  {/* Overlay لمنع النقر بزر الماوس الأيمن */}
-                                                  <div 
-                                                    className="absolute inset-0"
-                                                    onContextMenu={(e) => e.preventDefault()}
-                                                    style={{
-                                                      pointerEvents: 'none'
-                                                    }}
-                                                  />
-                                                </div>
+                                                // استخدام مكون SecureYouTubePlayer المخصص
+                                                <SecureYouTubePlayer 
+                                                  videoId={videoInfo.url} 
+                                                  title={video.title}
+                                                />
                                               ) : (
                                                 // Direct/MP4 Video Player
                                                 <video
@@ -1639,6 +1689,11 @@ const StudentDashboard: React.FC = () => {
                                               )}
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                                                 <p className="text-white text-sm font-medium">{video.title}</p>
+                                                <p className="text-gray-300 text-xs">
+                                                  {videoInfo.type === 'youtube' ? 'Video protected by secure player' : 
+                                                   videoInfo.type === 'supabase' ? 'Supabase Storage' : 
+                                                   'Direct Video'}
+                                                </p>
                                               </div>
                                             </>
                                           ) : (
