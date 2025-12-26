@@ -167,7 +167,6 @@ interface ExamResult {
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
-  // Regex patterns for different YouTube URL formats
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
     /youtube\.com\/v\/([^&\n?#]+)/,
@@ -188,54 +187,37 @@ const extractYouTubeVideoId = (url: string | null): string | null => {
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
-  console.log("🔗 Original video URL:", videoUrl);
-  
-  // If it's already a full URL starting with http, return it
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return videoUrl;
   }
   
-  // Default Supabase project URL
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
-  // Case 1: If it's just a filename
   if (videoUrl.includes('.mp4') || videoUrl.includes('.webm') || videoUrl.includes('.mov')) {
-    // Remove any path prefixes
     let filename = videoUrl;
     if (filename.includes('/')) {
       const parts = filename.split('/');
       filename = parts[parts.length - 1];
     }
     
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
-    console.log("📹 Generated public URL:", publicUrl);
-    return publicUrl;
+    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
   }
   
-  // Case 2: If it's stored in videos bucket with path
   if (videoUrl.startsWith('videos/')) {
     const filename = videoUrl.replace('videos/', '');
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
-    console.log("📹 Generated public URL from videos path:", publicUrl);
-    return publicUrl;
+    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
   }
   
-  // Case 3: If it's a storage object path (without public)
   if (videoUrl.includes('storage/v1/object')) {
-    // Convert to public URL
     if (videoUrl.includes('/storage/v1/object/')) {
-      const urlParts = videoUrl.split('/storage/v1/object/');
-      if (urlParts.length === 2) {
-        const [domain, path] = urlParts;
-        const publicUrl = `${domain}/storage/v1/object/public/${path}`;
-        console.log("🔄 Converted to public URL:", publicUrl);
-        return publicUrl;
+      const parts = videoUrl.split('/storage/v1/object/');
+      if (parts.length > 1) {
+        const [domain, path] = parts;
+        return `${domain}/storage/v1/object/public/${path}`;
       }
     }
   }
   
-  // If we can't determine, assume it's a filename in videos bucket
-  console.log("⚠️ Assuming video is a filename in videos bucket");
   return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
 };
 
@@ -243,23 +225,44 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
 const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
-  // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
     return { 
-      url: `https://www.youtube.com/embed/${youtubeId}`, 
+      url: youtubeId, 
       type: 'youtube' 
     };
   }
   
-  // Check if it's already a full URL (direct link)
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return { url: videoUrl, type: 'direct' };
   }
   
-  // Otherwise, it's likely a Supabase storage URL
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   return { url: supabaseUrl, type: 'supabase' };
+};
+
+// Function to create secure YouTube embed URL
+const getYouTubeEmbedUrl = (videoId: string): string => {
+  // إعدادات لإخفاء كل عناصر YouTube
+  const params = new URLSearchParams({
+    'autoplay': '1',
+    'playsinline': '1',
+    'controls': '1',
+    'disablekb': '1', // تعطيل مفاتيح لوحة المفاتيح
+    'fs': '0', // إخفاء زر ملء الشاشة
+    'modestbranding': '1', // تقليل الشعار
+    'rel': '0', // إخفاء الفيديوهات المقترحة
+    'showinfo': '0', // إخفاء معلومات الفيديو
+    'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
+    'cc_load_policy': '0', // إخفاء الترجمة
+    'color': 'white', // لون شريط التشغيل
+    'theme': 'light', // موضوع فاتح
+    'enablejsapi': '1', // تمكين JavaScript API للتحكم
+    'origin': window.location.origin, // تقييد الأصل
+    'widget_referrer': window.location.origin, // تقييد المرجع
+  });
+
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
 };
 
 const StudentDashboard: React.FC = () => {
@@ -301,7 +304,6 @@ const StudentDashboard: React.FC = () => {
       if (!centerSlug) return;
 
       try {
-        console.log("🔍 Fetching center info for subdomain:", centerSlug);
         const { data: centerData, error } = await supabase
           .from("centers")
           .select("id, name, subdomain")
@@ -316,9 +318,6 @@ const StudentDashboard: React.FC = () => {
         if (centerData) {
           setCenterId(centerData.id);
           setCenterSubdomain(centerData.subdomain || centerData.name);
-          console.log("🏫 Center info loaded:", centerData);
-        } else {
-          console.log("❌ No center found with subdomain:", centerSlug);
         }
       } catch (error) {
         console.error("🚨 Unexpected error fetching center info:", error);
@@ -333,7 +332,6 @@ const StudentDashboard: React.FC = () => {
       if (!user) return;
 
       try {
-        console.log("📊 Fetching exam results for student:", user.id);
         const { data, error } = await supabase
           .from("exam_results")
           .select(`
@@ -359,9 +357,6 @@ const StudentDashboard: React.FC = () => {
           return;
         }
 
-        console.log("✅ Exam results loaded:", data?.length || 0);
-
-        // Group results by exam_id
         const groupedResults: {[key: string]: ExamResult[]} = {};
         data?.forEach(result => {
           if (!groupedResults[result.exam_id]) {
@@ -383,7 +378,6 @@ const StudentDashboard: React.FC = () => {
     const fetchSubscriptionsAndContent = async () => {
       try {
         if (!user) {
-          console.log("👤 No user found, setting mock data");
           setUpcomingLessons([
             {
               id: "1",
@@ -419,10 +413,7 @@ const StudentDashboard: React.FC = () => {
           return;
         }
 
-        console.log("🔍 Loaded student:", user);
-
         // 1️⃣ جلب الاشتراكات النشطة للطالب
-        console.log("📋 Step 1: Fetching subscriptions for student:", user.id);
         const { data: subs, error: subError } = await supabase
           .from("subscriptions")
           .select("id, teacher_id, is_active, start_date, end_date, center_wide")
@@ -435,37 +426,24 @@ const StudentDashboard: React.FC = () => {
           return;
         }
 
-        console.log("✅ Subscriptions found:", subs);
-
         // 2️⃣ إذا كان هناك اشتراكات، جلب المحتوى المرتبط
         if (subs && subs.length > 0) {
           const teacherIds = subs.map((s: any) => s.teacher_id);
           const uniqueTeacherIds = [...new Set(teacherIds)];
-          
-          console.log("👨‍🏫 Teacher IDs from subscriptions:", uniqueTeacherIds);
 
           const isCenterWide = subs.some((s: any) => s.center_wide === true);
-          console.log("🎯 Is center-wide subscription:", isCenterWide);
 
           // جلب بيانات المدرسين
-          console.log("👨‍🏫 Step 2: Fetching teachers data");
-          const { data: teachersData, error: teachersError } = await supabase
+          const { data: teachersData } = await supabase
             .from("teachers")
             .select("id, full_name, email, subject, image_url, center_id")
             .in("id", uniqueTeacherIds);
-
-          if (teachersError) {
-            console.error("❌ Teachers fetch error:", teachersError);
-          } else {
-            console.log("✅ Teachers data loaded:", teachersData);
-          }
 
           const teachersMap = new Map();
           teachersData?.forEach(teacher => {
             teachersMap.set(teacher.id, teacher);
           });
 
-          // بناء بيانات الاشتراكات مع المحتوى
           const subsWithContent: SubscriptionItem[] = subs.map((s: any) => ({
             id: s.id,
             student_id: user.id,
@@ -479,156 +457,40 @@ const StudentDashboard: React.FC = () => {
             materials: [],
           }));
 
-          console.log("📦 Initial subscriptions with content structure:", subsWithContent);
-
           // 3️⃣ جلب المحتوى بناءً على نوع الاشتراك
           if (isCenterWide && centerId) {
             // اشتراك شامل - جلب كل محتوى السنتر
-            console.log("🎯 Step 3A: Center-wide subscription detected, fetching all center content for center:", centerId);
-
-            const { data: centerTeachers, error: centerTeachersError } = await supabase
+            const { data: centerTeachers } = await supabase
               .from("teachers")
               .select("id")
               .eq("center_id", centerId);
 
-            if (centerTeachersError) {
-              console.error("❌ Center teachers fetch error:", centerTeachersError);
-            } else if (centerTeachers && centerTeachers.length > 0) {
+            if (centerTeachers && centerTeachers.length > 0) {
               const centerTeacherIds = centerTeachers.map(t => t.id);
-              console.log("🎯 Center teacher IDs for content:", centerTeacherIds);
 
               // جلب الفيديوهات مع الامتحانات المرتبطة
-              console.log("🎥 Fetching videos with exams for center teachers");
-              const { data: videosData, error: videosError } = await supabase
+              const { data: videosData } = await supabase
                 .from("videos")
                 .select("id, teacher_id, title, description, video_url, uploaded_at")
                 .in("teacher_id", centerTeacherIds);
 
-              if (videosError) {
-                console.error("❌ Videos fetch error:", videosError);
-              } else {
-                console.log("✅ Center videos found:", videosData?.length || 0);
-                
-                // جلب الامتحانات المرتبطة بالفيديوهات
-                if (videosData && videosData.length > 0) {
-                  const videoIds = videosData.map(v => v.id);
-                  
-                  // 1️⃣ جلب الامتحانات فقط
-                  console.log("📝 Fetching exams for videos");
-                  const { data: exams, error: examsError } = await supabase
-                    .from('exams')
-                    .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
-                    .in('video_id', videoIds);
-
-                  if (examsError) {
-                    console.error("❌ Exams fetch error:", examsError);
-                  } else {
-                    console.log("✅ Exams found:", exams?.length || 0);
-                    
-                    // 2️⃣ لكل امتحان، جلب الأسئلة والاختيارات
-                    const examsWithQuestions = await Promise.all(
-                      exams?.map(async (exam) => {
-                        // جلب أسئلة الامتحان
-                        const { data: questions } = await supabase
-                          .from('exam_questions')
-                          .select('id, question_text, exam_id')
-                          .eq('exam_id', exam.id);
-
-                        // لكل سؤال، جلب الاختيارات
-                        const questionsWithOptions = await Promise.all(
-                          questions?.map(async (question) => {
-                            const { data: options } = await supabase
-                              .from('exam_options')
-                              .select('id, option_text, is_correct, question_id')
-                              .eq('question_id', question.id);
-
-                            return {
-                              ...question,
-                              exam_options: options || []
-                            };
-                          }) || []
-                        );
-
-                        return {
-                          ...exam,
-                          questions_count: questionsWithOptions.length,
-                          exam_questions: questionsWithOptions
-                        };
-                      }) || []
-                    );
-
-                    // ربط الفيديوهات بالامتحانات الخاصة بها
-                    const videosWithExams = videosData.map(video => ({
-                      ...video,
-                      exams: examsWithQuestions.filter(exam => exam.video_id === video.id) || []
-                    }));
-
-                    subsWithContent.forEach(sub => {
-                      sub.videosWithExams = videosWithExams;
-                    });
-                  }
-                }
-              }
-
-              // جلب المواد الدراسية
-              console.log("📚 Fetching materials for center teachers");
-              const { data: materialsData, error: materialsError } = await supabase
-                .from("materials")
-                .select("id, teacher_id, title, description, file_url, uploaded_at")
-                .in("teacher_id", centerTeacherIds);
-
-              if (materialsError) {
-                console.error("❌ Materials fetch error:", materialsError);
-              } else {
-                console.log("✅ Center materials found:", materialsData?.length || 0);
-                subsWithContent.forEach(sub => {
-                  sub.materials = materialsData || [];
-                });
-              }
-            }
-          } else {
-            // اشتراك عادي - جلب محتوى المدرسين المحددين فقط
-            console.log("🎯 Step 3B: Regular subscription, fetching specific teachers content for teachers:", uniqueTeacherIds);
-
-            // جلب الفيديوهات مع الامتحانات المرتبطة
-            console.log("🎥 Fetching videos with exams for specific teachers");
-            const { data: videosData, error: videosError } = await supabase
-              .from("videos")
-              .select("id, teacher_id, title, description, video_url, uploaded_at")
-              .in("teacher_id", uniqueTeacherIds);
-
-            if (videosError) {
-              console.error("❌ Videos fetch error:", videosError);
-            } else {
-              console.log("✅ Teacher-specific videos found:", videosData?.length || 0);
-              
-              // جلب الامتحانات المرتبطة بالفيديوهات
               if (videosData && videosData.length > 0) {
                 const videoIds = videosData.map(v => v.id);
                 
-                // 1️⃣ جلب الامتحانات فقط
-                console.log("📝 Fetching exams for videos");
-                const { data: exams, error: examsError } = await supabase
+                // جلب الامتحانات
+                const { data: exams } = await supabase
                   .from('exams')
                   .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
-                  .in('video_id', videoIds)
-                  .in('teacher_id', uniqueTeacherIds);
+                  .in('video_id', videoIds);
 
-                if (examsError) {
-                  console.error("❌ Exams fetch error:", examsError);
-                } else {
-                  console.log("✅ Exams found:", exams?.length || 0);
-                  
-                  // 2️⃣ لكل امتحان، جلب الأسئلة والاختيارات
+                if (exams) {
                   const examsWithQuestions = await Promise.all(
-                    exams?.map(async (exam) => {
-                      // جلب أسئلة الامتحان
+                    exams.map(async (exam) => {
                       const { data: questions } = await supabase
                         .from('exam_questions')
                         .select('id, question_text, exam_id')
                         .eq('exam_id', exam.id);
 
-                      // لكل سؤال، جلب الاختيارات
                       const questionsWithOptions = await Promise.all(
                         questions?.map(async (question) => {
                           const { data: options } = await supabase
@@ -648,42 +510,103 @@ const StudentDashboard: React.FC = () => {
                         questions_count: questionsWithOptions.length,
                         exam_questions: questionsWithOptions
                       };
-                    }) || []
+                    })
                   );
 
-                  // ربط الفيديوهات بالامتحانات الخاصة بها وتوزيعها على الاشتراكات
+                  const videosWithExams = videosData.map(video => ({
+                    ...video,
+                    exams: examsWithQuestions.filter(exam => exam.video_id === video.id) || []
+                  }));
+
                   subsWithContent.forEach(sub => {
-                    const teacherVideos = videosData.filter(video => video.teacher_id === sub.teacher_id);
-                    sub.videosWithExams = teacherVideos.map(video => ({
-                      ...video,
-                      exams: examsWithQuestions.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
-                    }));
+                    sub.videosWithExams = videosWithExams;
                   });
                 }
+              }
+
+              // جلب المواد الدراسية
+              const { data: materialsData } = await supabase
+                .from("materials")
+                .select("id, teacher_id, title, description, file_url, uploaded_at")
+                .in("teacher_id", centerTeacherIds);
+
+              if (materialsData) {
+                subsWithContent.forEach(sub => {
+                  sub.materials = materialsData || [];
+                });
+              }
+            }
+          } else {
+            // اشتراك عادي - جلب محتوى المدرسين المحددين فقط
+            const { data: videosData } = await supabase
+              .from("videos")
+              .select("id, teacher_id, title, description, video_url, uploaded_at")
+              .in("teacher_id", uniqueTeacherIds);
+
+            if (videosData && videosData.length > 0) {
+              const videoIds = videosData.map(v => v.id);
+              
+              const { data: exams } = await supabase
+                .from('exams')
+                .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
+                .in('video_id', videoIds)
+                .in('teacher_id', uniqueTeacherIds);
+
+              if (exams) {
+                const examsWithQuestions = await Promise.all(
+                  exams.map(async (exam) => {
+                    const { data: questions } = await supabase
+                      .from('exam_questions')
+                      .select('id, question_text, exam_id')
+                      .eq('exam_id', exam.id);
+
+                    const questionsWithOptions = await Promise.all(
+                      questions?.map(async (question) => {
+                        const { data: options } = await supabase
+                          .from('exam_options')
+                          .select('id, option_text, is_correct, question_id')
+                          .eq('question_id', question.id);
+
+                        return {
+                          ...question,
+                          exam_options: options || []
+                        };
+                      }) || []
+                    );
+
+                    return {
+                      ...exam,
+                      questions_count: questionsWithOptions.length,
+                      exam_questions: questionsWithOptions
+                    };
+                  })
+                );
+
+                subsWithContent.forEach(sub => {
+                  const teacherVideos = videosData.filter(video => video.teacher_id === sub.teacher_id);
+                  sub.videosWithExams = teacherVideos.map(video => ({
+                    ...video,
+                    exams: examsWithQuestions.filter(exam => exam.video_id === video.id && exam.teacher_id === sub.teacher_id) || []
+                  }));
+                });
               }
             }
 
             // جلب المواد الدراسية
-            console.log("📚 Fetching materials for specific teachers");
-            const { data: materialsData, error: materialsError } = await supabase
+            const { data: materialsData } = await supabase
               .from("materials")
               .select("id, teacher_id, title, description, file_url, uploaded_at")
               .in("teacher_id", uniqueTeacherIds);
 
-            if (materialsError) {
-              console.error("❌ Materials fetch error:", materialsError);
-            } else {
-              console.log("✅ Teacher-specific materials found:", materialsData?.length || 0);
+            if (materialsData) {
               subsWithContent.forEach(sub => {
                 sub.materials = materialsData ? materialsData.filter(material => material.teacher_id === sub.teacher_id) : [];
               });
             }
           }
 
-          console.log("✅ Final subscriptions data with content:", subsWithContent);
           setSubscriptionsData(subsWithContent);
         } else {
-          console.log("📭 No active subscriptions found");
           setSubscriptionsData([]);
         }
 
@@ -730,19 +653,12 @@ const StudentDashboard: React.FC = () => {
         console.error("🚨 Unexpected error in dashboard:", error);
         toast.error("Failed to load dashboard data");
 
-        // بيانات تجريبية في حالة الخطأ
         setUpcomingLessons([
           {
             id: "1",
             title: "Advanced Mathematics",
             time: "10:00 AM - 11:30 AM",
             teacher: "Dr. Sarah Johnson",
-          },
-          {
-            id: "2",
-            title: "Physics Fundamentals",
-            time: "1:00 PM - 2:30 PM",
-            teacher: "Prof. Michael Chen",
           },
         ]);
         setAiSuggestions([
@@ -764,14 +680,12 @@ const StudentDashboard: React.FC = () => {
         ]);
       } finally {
         setLoading(false);
-        console.log("🏁 Dashboard loading completed");
       }
     };
 
     fetchSubscriptionsAndContent();
   }, [user, centerId]);
 
-  // حساب حالة الاشتراك
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
     const end = s.end_date ? new Date(s.end_date) : null;
@@ -911,7 +825,6 @@ const StudentDashboard: React.FC = () => {
       setExamTimer(null);
     }
 
-    // حساب النتيجة
     let correctAnswers = 0;
     const totalQuestions = activeExam.questions.length;
 
@@ -929,7 +842,6 @@ const StudentDashboard: React.FC = () => {
     const submittedAt = new Date().toISOString();
 
     try {
-      console.log("💾 Saving exam result to database...");
       const { data, error } = await supabase
         .from("exam_results")
         .insert({
@@ -946,9 +858,6 @@ const StudentDashboard: React.FC = () => {
         throw error;
       }
 
-      console.log("✅ Exam result saved successfully:", data);
-
-      // تحديث نتائج الامتحانات المحلية
       const newResult: ExamResult = {
         id: data[0].id,
         exam_id: activeExam.examId,
@@ -1019,12 +928,10 @@ const StudentDashboard: React.FC = () => {
   const handleVideoPlay = (videoId: string) => {
     setActiveVideo(activeVideo === videoId ? null : videoId);
     
-    // Reset loading and error states
     if (activeVideo !== videoId) {
       setVideoLoading(prev => ({ ...prev, [videoId]: true }));
       setVideoErrors(prev => ({ ...prev, [videoId]: "" }));
       
-      // Simulate loading for better UX
       setTimeout(() => {
         setVideoLoading(prev => ({ ...prev, [videoId]: false }));
       }, 500);
@@ -1685,16 +1592,30 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                // YouTube Embedded Player
-                                                <iframe
-                                                  src={`${videoInfo.url}?autoplay=1&modestbranding=1&rel=0&showinfo=0&controls=1&disablekb=1`}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  frameBorder="0"
-                                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                  allowFullScreen
-                                                  referrerPolicy="strict-origin-when-cross-origin"
-                                                ></iframe>
+                                                // YouTube Secure Embedded Player - بدون أي عناصر YouTube
+                                                <div className="absolute inset-0 w-full h-full">
+                                                  <iframe
+                                                    src={getYouTubeEmbedUrl(videoInfo.url)}
+                                                    title={video.title}
+                                                    className="absolute inset-0 w-full h-full"
+                                                    frameBorder="0"
+                                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen
+                                                    referrerPolicy="strict-origin-when-cross-origin"
+                                                    sandbox="allow-same-origin allow-scripts allow-popups allow-presentation"
+                                                    style={{
+                                                      pointerEvents: 'auto'
+                                                    }}
+                                                  ></iframe>
+                                                  {/* Overlay لمنع النقر بزر الماوس الأيمن */}
+                                                  <div 
+                                                    className="absolute inset-0"
+                                                    onContextMenu={(e) => e.preventDefault()}
+                                                    style={{
+                                                      pointerEvents: 'none'
+                                                    }}
+                                                  />
+                                                </div>
                                               ) : (
                                                 // Direct/MP4 Video Player
                                                 <video
@@ -1707,14 +1628,10 @@ const StudentDashboard: React.FC = () => {
                                                   playsInline
                                                   preload="metadata"
                                                   onError={(e) => {
-                                                    console.error("❌ Video playback error:", e);
                                                     setVideoErrors(prev => ({ 
                                                       ...prev, 
                                                       [video.id]: "Failed to load video. Please try again later." 
                                                     }));
-                                                  }}
-                                                  onCanPlay={() => {
-                                                    console.log("✅ Video can play:", video.title);
                                                   }}
                                                 >
                                                   Your browser does not support the video tag.
@@ -1722,11 +1639,6 @@ const StudentDashboard: React.FC = () => {
                                               )}
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                                                 <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  {videoInfo.type === 'youtube' ? 'YouTube Video' : 
-                                                   videoInfo.type === 'supabase' ? 'Supabase Storage' : 
-                                                   'Direct Video'}
-                                                </p>
                                               </div>
                                             </>
                                           ) : (
