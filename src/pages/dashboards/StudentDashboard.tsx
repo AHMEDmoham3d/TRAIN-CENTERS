@@ -241,7 +241,7 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Function to create YouTube embed URL without any branding
+// Function to create YouTube embed URL with ALL branding removed
 const getYouTubeEmbedUrl = (videoId: string): string => {
   const params = new URLSearchParams({
     'playsinline': '1',
@@ -258,9 +258,121 @@ const getYouTubeEmbedUrl = (videoId: string): string => {
     'widget_referrer': window.location.origin,
     'autohide': '1',
     'autoplay': '0',
+    'color': 'white',
+    'theme': 'dark',
+    'loop': '0',
+    'playsInline': '1',
+    'controlsList': 'nodownload nofullscreen noremoteplayback',
   });
 
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+};
+
+// Custom YouTube player with complete branding removal
+const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    // Add CSS to hide any remaining branding
+    const style = document.createElement('style');
+    style.textContent = `
+      .youtube-container iframe {
+        filter: saturate(1.1) contrast(1.1);
+      }
+      /* Hide YouTube logo and branding */
+      .ytp-chrome-top,
+      .ytp-title-channel,
+      .ytp-title-text,
+      .ytp-share-button,
+      .ytp-cards-button,
+      .ytp-watermark,
+      .ytp-chrome-top-buttons,
+      .ytp-pause-overlay,
+      .ytp-endscreen-content {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+      }
+      /* Custom player styling */
+      .youtube-player-wrapper {
+        background: #000;
+        position: relative;
+      }
+      .youtube-player-wrapper::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 100%);
+        pointer-events: none;
+        z-index: 1;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      style.remove();
+    };
+  }, []);
+
+  const handleIframeLoad = () => {
+    setIsLoaded(true);
+    
+    // Additional security measures
+    if (iframeRef.current) {
+      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-same-origin');
+      iframeRef.current.setAttribute('referrerpolicy', 'no-referrer');
+      
+      // Prevent right-click context menu
+      iframeRef.current.addEventListener('load', () => {
+        try {
+          iframeRef.current?.contentWindow?.document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+          });
+        } catch (e) {
+          // Cross-origin restriction
+        }
+      });
+    }
+  };
+
+  return (
+    <div className="youtube-player-wrapper relative w-full h-full">
+      {!isLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p>Loading video...</p>
+          </div>
+        </div>
+      )}
+      <iframe
+        ref={iframeRef}
+        src={getYouTubeEmbedUrl(videoId)}
+        title={title}
+        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        frameBorder="0"
+        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen={false}
+        referrerPolicy="strict-origin-when-cross-origin"
+        sandbox="allow-same-origin allow-scripts"
+        loading="lazy"
+        onLoad={handleIframeLoad}
+        style={{
+          backgroundColor: '#000',
+        }}
+      />
+      {/* Custom overlay to hide any remaining YouTube UI */}
+      <div className="absolute inset-0 pointer-events-none" style={{
+        background: 'linear-gradient(to bottom, transparent 90%, #000 100%)',
+        zIndex: 1
+      }}></div>
+    </div>
+  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -1559,17 +1671,10 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                <iframe
-                                                  src={getYouTubeEmbedUrl(videoInfo.url)}
+                                                <YouTubePlayer 
+                                                  videoId={videoInfo.url} 
                                                   title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  frameBorder="0"
-                                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                                  allowFullScreen={false}
-                                                  referrerPolicy="strict-origin-when-cross-origin"
-                                                  sandbox="allow-same-origin allow-scripts"
-                                                  loading="lazy"
-                                                ></iframe>
+                                                />
                                               ) : (
                                                 <video
                                                   key={`${video.id}-${Date.now()}`}
@@ -1593,7 +1698,7 @@ const StudentDashboard: React.FC = () => {
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                                                 <p className="text-white text-sm font-medium">{video.title}</p>
                                                 <p className="text-gray-300 text-xs">
-                                                  {videoInfo.type === 'youtube' ? 'Video Player' : 'Direct Video'}
+                                                  Platform Video Player
                                                 </p>
                                               </div>
                                             </>
