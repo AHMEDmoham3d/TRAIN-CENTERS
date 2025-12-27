@@ -241,124 +241,331 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Function to create YouTube embed URL with ALL branding removed
-const getYouTubeEmbedUrl = (videoId: string): string => {
-  const params = new URLSearchParams({
-    'playsinline': '1',
-    'controls': '1',
-    'disablekb': '1',
-    'fs': '0',
-    'modestbranding': '1',
-    'rel': '0',
-    'showinfo': '0',
-    'iv_load_policy': '3',
-    'cc_load_policy': '0',
-    'enablejsapi': '0',
-    'origin': window.location.origin,
-    'widget_referrer': window.location.origin,
-    'autohide': '1',
-    'autoplay': '0',
-    'color': 'white',
-    'theme': 'dark',
-    'loop': '0',
-    'playsInline': '1',
-    'controlsList': 'nodownload nofullscreen noremoteplayback',
-  });
-
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-};
-
-// Custom YouTube player with complete branding removal
+// YouTube Player Component - Completely isolated from YouTube branding
 const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const iframeRef = React.useRef<HTMLIFrameElement>(null);
   const [isLoaded, setIsLoaded] = useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Add CSS to hide any remaining branding
+    // Create and inject CSS to hide ALL YouTube branding and UI elements
     const style = document.createElement('style');
     style.textContent = `
-      .youtube-container iframe {
-        filter: saturate(1.1) contrast(1.1);
-      }
-      /* Hide YouTube logo and branding */
+      /* Hide ALL YouTube branding elements */
       .ytp-chrome-top,
       .ytp-title-channel,
       .ytp-title-text,
+      .ytp-title,
       .ytp-share-button,
       .ytp-cards-button,
       .ytp-watermark,
       .ytp-chrome-top-buttons,
       .ytp-pause-overlay,
-      .ytp-endscreen-content {
+      .ytp-endscreen-content,
+      .ytp-ce-element,
+      .ytp-ce-channel,
+      .ytp-ce-playlist,
+      .ytp-ce-video,
+      .ytp-ce-website,
+      .ytp-channel-name,
+      .ytp-branding-logo,
+      .ytp-branding-icon,
+      .ytp-branding-name,
+      .ytp-contextmenu,
+      .ytp-contextmenu-item,
+      .ytp-menuitem,
+      .ytp-menuitem-label,
+      .ytp-popup,
+      .ytp-tooltip,
+      .ytp-tooltip-text,
+      .ytp-tooltip-bg,
+      .ytp-settings-menu,
+      .ytp-chrome-controls,
+      .ytp-chrome-bottom,
+      .ytp-gradient-bottom,
+      .ytp-gradient-top,
+      .ytp-show-cards-title,
+      .ytp-cards-teaser,
+      .ytp-cards-teaser-box,
+      .ytp-cards-teaser-text,
+      .ytp-ce-expanding-overlay-body,
+      .ytp-ce-expanding-image,
+      .ytp-ce-expanding-overlay,
+      .ytp-ce-element-shadow,
+      .ytp-ce-element-outer,
+      .ytp-ce-element-inner,
+      .ytp-ce-expanding-icon,
+      .ytp-ce-video-duration,
+      .ytp-ce-video-title,
+      .ytp-ce-playlist-count,
+      .ytp-ce-playlist-title,
+      .ytp-ce-channel-title,
+      .ytp-ce-channel-metadata,
+      .ytp-ce-channel-this,
+      .ytp-ce-channel-subscribe,
+      .ytp-ce-website-title,
+      .ytp-ce-website-metadata,
+      .ytp-ce-expanding-overlay-background,
+      .ytp-ce-expanding-overlay-close,
+      .ytp-ce-expanding-html5-video,
+      .ytp-ce-covering-overlay,
+      .ytp-ce-covering-image,
+      .ytp-ce-covering-overlay-background,
+      .ytp-ce-covering-icon,
+      .ytp-ce-covering-text,
+      .ytp-ce-covering-cta,
+      .ytp-ce-covering-link,
+      .ytp-ce-video-upnext,
+      .ytp-ce-playlist-upnext,
+      .ytp-ce-channel-upnext,
+      .ytp-ce-website-upnext,
+      .ytp-ce-autoplay-notification,
+      .ytp-ce-autoplay-notification-text,
+      .ytp-ce-autoplay-notification-icon,
+      .ytp-ce-autoplay-notification-button,
+      .ytp-ce-size-346 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-426 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-470 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-506 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-570 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-640 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-853 .ytp-ce-expanding-overlay-body,
+      .ytp-ce-size-1280 .ytp-ce-expanding-overlay-body {
         display: none !important;
         opacity: 0 !important;
         visibility: hidden !important;
+        pointer-events: none !important;
       }
-      /* Custom player styling */
-      .youtube-player-wrapper {
+      
+      /* Hide suggested videos at the end */
+      .html5-endscreen {
+        display: none !important;
+      }
+      
+      /* Hide YouTube logo and text */
+      .ytp-logo,
+      .ytp-logo-link,
+      .ytp-logo-icon,
+      .ytp-logo-text {
+        display: none !important;
+      }
+      
+      /* Hide share button */
+      .ytp-share-button-visible {
+        display: none !important;
+      }
+      
+      /* Hide video title overlay */
+      .ytp-title-link {
+        display: none !important;
+      }
+      
+      /* Hide channel name */
+      .ytp-title-channel-logo,
+      .ytp-title-expanded-heading,
+      .ytp-title-expanded-title,
+      .ytp-title-expanded-overlay {
+        display: none !important;
+      }
+      
+      /* Hide context menu */
+      .ytp-contextmenu {
+        display: none !important;
+      }
+      
+      /* Hide player buttons that show YouTube info */
+      .ytp-button[aria-label*="YouTube"],
+      .ytp-button[title*="YouTube"],
+      .ytp-button[aria-label*="youtube"],
+      .ytp-button[title*="youtube"] {
+        display: none !important;
+      }
+      
+      /* Hide any text containing YouTube */
+      *:contains("YouTube"),
+      *:contains("youtube"),
+      *:contains("YT"),
+      *:contains("You Tube") {
+        display: none !important;
+      }
+      
+      /* Custom player container */
+      .youtube-player-container {
         background: #000;
         position: relative;
+        overflow: hidden;
       }
-      .youtube-player-wrapper::before {
-        content: '';
+      
+      /* Ensure iframe takes full space */
+      .youtube-player-container iframe {
         position: absolute;
         top: 0;
         left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 100%);
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+      
+      /* Loading overlay */
+      .youtube-loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+      
+      /* Custom controls overlay to prevent YouTube UI */
+      .youtube-protection-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 5;
         pointer-events: none;
-        z-index: 1;
       }
     `;
     document.head.appendChild(style);
 
+    // Prevent right-click and copy on the entire container
+    const preventDefault = (e: Event) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('contextmenu', preventDefault);
+      container.addEventListener('copy', preventDefault);
+      container.addEventListener('cut', preventDefault);
+    }
+
     return () => {
       style.remove();
+      if (container) {
+        container.removeEventListener('contextmenu', preventDefault);
+        container.removeEventListener('copy', preventDefault);
+        container.removeEventListener('cut', preventDefault);
+      }
     };
   }, []);
 
   const handleIframeLoad = () => {
     setIsLoaded(true);
     
-    // Additional security measures
-    if (iframeRef.current) {
-      iframeRef.current.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-      iframeRef.current.setAttribute('referrerpolicy', 'no-referrer');
-      
-      // Prevent right-click context menu
-      iframeRef.current.addEventListener('load', () => {
-        try {
-          iframeRef.current?.contentWindow?.document.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            return false;
-          });
-        } catch (e) {
-          // Cross-origin restriction
+    // Additional security: try to inject more CSS into the iframe
+    setTimeout(() => {
+      try {
+        if (iframeRef.current && iframeRef.current.contentWindow) {
+          const iframeDoc = iframeRef.current.contentWindow.document;
+          const iframeStyle = iframeDoc.createElement('style');
+          iframeStyle.textContent = `
+            /* Hide ALL YouTube UI in iframe */
+            .ytp-chrome-top,
+            .ytp-title-channel,
+            .ytp-title-text,
+            .ytp-share-button,
+            .ytp-cards-button,
+            .ytp-watermark,
+            .ytp-chrome-top-buttons,
+            .ytp-pause-overlay,
+            .ytp-endscreen-content,
+            .ytp-ce-element,
+            .ytp-channel-name,
+            .ytp-branding-logo,
+            .ytp-branding-icon,
+            .ytp-contextmenu,
+            .html5-endscreen,
+            .ytp-logo,
+            .ytp-logo-link,
+            .ytp-title-link,
+            .ytp-title-channel-logo,
+            .ytp-title-expanded-heading,
+            .ytp-title-expanded-title,
+            .ytp-title-expanded-overlay,
+            .ytp-button[aria-label*="YouTube"],
+            .ytp-button[title*="YouTube"],
+            .ytp-button[aria-label*="youtube"],
+            .ytp-button[title*="youtube"] {
+              display: none !important;
+              opacity: 0 !important;
+              visibility: hidden !important;
+              pointer-events: none !important;
+            }
+            
+            /* Hide any text nodes containing YouTube */
+            body * {
+              -webkit-user-select: none !important;
+              -moz-user-select: none !important;
+              -ms-user-select: none !important;
+              user-select: none !important;
+            }
+          `;
+          iframeDoc.head.appendChild(iframeStyle);
         }
-      });
-    }
+      } catch (e) {
+        // Cross-origin restriction - expected
+      }
+    }, 1000);
+  };
+
+  // Generate embed URL with ALL branding disabled
+  const getEmbedUrl = () => {
+    const params = new URLSearchParams({
+      'autoplay': '0',
+      'controls': '1',
+      'disablekb': '1',
+      'fs': '0',
+      'modestbranding': '1',
+      'rel': '0',
+      'showinfo': '0',
+      'iv_load_policy': '3',
+      'cc_load_policy': '0',
+      'enablejsapi': '0',
+      'origin': window.location.origin,
+      'widget_referrer': window.location.origin,
+      'autohide': '1',
+      'color': 'white',
+      'theme': 'dark',
+      'loop': '0',
+      'playsinline': '1',
+      'controlsList': 'nodownload nofullscreen noremoteplayback noplaybackrate',
+      'disablePictureInPicture': '1',
+      'playsInline': '1',
+      'preload': 'none',
+      'mute': '0',
+      'playlist': videoId
+    });
+
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
   };
 
   return (
-    <div className="youtube-player-wrapper relative w-full h-full">
+    <div ref={containerRef} className="youtube-player-container relative w-full h-full">
       {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+        <div className="youtube-loading-overlay">
           <div className="text-white text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
             <p>Loading video...</p>
           </div>
         </div>
       )}
+      
       <iframe
         ref={iframeRef}
-        src={getYouTubeEmbedUrl(videoId)}
+        src={getEmbedUrl()}
         title={title}
         className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         frameBorder="0"
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen={false}
-        referrerPolicy="strict-origin-when-cross-origin"
+        referrerPolicy="no-referrer"
         sandbox="allow-same-origin allow-scripts"
         loading="lazy"
         onLoad={handleIframeLoad}
@@ -366,11 +573,9 @@ const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, tit
           backgroundColor: '#000',
         }}
       />
-      {/* Custom overlay to hide any remaining YouTube UI */}
-      <div className="absolute inset-0 pointer-events-none" style={{
-        background: 'linear-gradient(to bottom, transparent 90%, #000 100%)',
-        zIndex: 1
-      }}></div>
+      
+      {/* Protection overlay to block interactions with YouTube UI */}
+      <div className="youtube-protection-overlay"></div>
     </div>
   );
 };
