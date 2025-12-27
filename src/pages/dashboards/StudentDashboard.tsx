@@ -163,26 +163,6 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID
-const extractYouTubeVideoId = (url: string | null): string | null => {
-  if (!url) return null;
-  
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /youtube\.com\/v\/([^&\n?#]+)/,
-    /youtube\.com\/watch\?.*v=([^&\n?#]+)/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
-    }
-  }
-  
-  return null;
-};
-
 // Function to get public URL from Supabase Storage
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
@@ -222,362 +202,20 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
 };
 
 // Function to get proper video URL based on source
-const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
-  if (!videoUrl) return { url: null, type: 'unknown' };
-  
-  const youtubeId = extractYouTubeVideoId(videoUrl);
-  if (youtubeId) {
-    return { 
-      url: youtubeId, 
-      type: 'youtube' 
-    };
+const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'supabase' | 'direct' | 'unsupported' } => {
+  if (!videoUrl) return { url: null, type: 'unsupported' };
+
+  // Check if it's a YouTube or related URL - not supported
+  if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') || videoUrl.includes('googlevideo.com')) {
+    return { url: null, type: 'unsupported' };
   }
-  
+
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return { url: videoUrl, type: 'direct' };
   }
-  
+
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   return { url: supabaseUrl, type: 'supabase' };
-};
-
-// YouTube Player Component - Completely isolated from YouTube branding
-const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    // Create and inject CSS to hide ALL YouTube branding and UI elements
-    const style = document.createElement('style');
-    style.textContent = `
-      /* Hide ALL YouTube branding elements */
-      .ytp-chrome-top,
-      .ytp-title-channel,
-      .ytp-title-text,
-      .ytp-title,
-      .ytp-share-button,
-      .ytp-cards-button,
-      .ytp-watermark,
-      .ytp-chrome-top-buttons,
-      .ytp-pause-overlay,
-      .ytp-endscreen-content,
-      .ytp-ce-element,
-      .ytp-ce-channel,
-      .ytp-ce-playlist,
-      .ytp-ce-video,
-      .ytp-ce-website,
-      .ytp-channel-name,
-      .ytp-branding-logo,
-      .ytp-branding-icon,
-      .ytp-branding-name,
-      .ytp-contextmenu,
-      .ytp-contextmenu-item,
-      .ytp-menuitem,
-      .ytp-menuitem-label,
-      .ytp-popup,
-      .ytp-tooltip,
-      .ytp-tooltip-text,
-      .ytp-tooltip-bg,
-      .ytp-settings-menu,
-      .ytp-chrome-controls,
-      .ytp-chrome-bottom,
-      .ytp-gradient-bottom,
-      .ytp-gradient-top,
-      .ytp-show-cards-title,
-      .ytp-cards-teaser,
-      .ytp-cards-teaser-box,
-      .ytp-cards-teaser-text,
-      .ytp-ce-expanding-overlay-body,
-      .ytp-ce-expanding-image,
-      .ytp-ce-expanding-overlay,
-      .ytp-ce-element-shadow,
-      .ytp-ce-element-outer,
-      .ytp-ce-element-inner,
-      .ytp-ce-expanding-icon,
-      .ytp-ce-video-duration,
-      .ytp-ce-video-title,
-      .ytp-ce-playlist-count,
-      .ytp-ce-playlist-title,
-      .ytp-ce-channel-title,
-      .ytp-ce-channel-metadata,
-      .ytp-ce-channel-this,
-      .ytp-ce-channel-subscribe,
-      .ytp-ce-website-title,
-      .ytp-ce-website-metadata,
-      .ytp-ce-expanding-overlay-background,
-      .ytp-ce-expanding-overlay-close,
-      .ytp-ce-expanding-html5-video,
-      .ytp-ce-covering-overlay,
-      .ytp-ce-covering-image,
-      .ytp-ce-covering-overlay-background,
-      .ytp-ce-covering-icon,
-      .ytp-ce-covering-text,
-      .ytp-ce-covering-cta,
-      .ytp-ce-covering-link,
-      .ytp-ce-video-upnext,
-      .ytp-ce-playlist-upnext,
-      .ytp-ce-channel-upnext,
-      .ytp-ce-website-upnext,
-      .ytp-ce-autoplay-notification,
-      .ytp-ce-autoplay-notification-text,
-      .ytp-ce-autoplay-notification-icon,
-      .ytp-ce-autoplay-notification-button,
-      .ytp-ce-size-346 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-426 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-470 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-506 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-570 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-640 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-853 .ytp-ce-expanding-overlay-body,
-      .ytp-ce-size-1280 .ytp-ce-expanding-overlay-body {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-      }
-      
-      /* Hide suggested videos at the end */
-      .html5-endscreen {
-        display: none !important;
-      }
-      
-      /* Hide YouTube logo and text */
-      .ytp-logo,
-      .ytp-logo-link,
-      .ytp-logo-icon,
-      .ytp-logo-text {
-        display: none !important;
-      }
-      
-      /* Hide share button */
-      .ytp-share-button-visible {
-        display: none !important;
-      }
-      
-      /* Hide video title overlay */
-      .ytp-title-link {
-        display: none !important;
-      }
-      
-      /* Hide channel name */
-      .ytp-title-channel-logo,
-      .ytp-title-expanded-heading,
-      .ytp-title-expanded-title,
-      .ytp-title-expanded-overlay {
-        display: none !important;
-      }
-      
-      /* Hide context menu */
-      .ytp-contextmenu {
-        display: none !important;
-      }
-      
-      /* Hide player buttons that show YouTube info */
-      .ytp-button[aria-label*="YouTube"],
-      .ytp-button[title*="YouTube"],
-      .ytp-button[aria-label*="youtube"],
-      .ytp-button[title*="youtube"] {
-        display: none !important;
-      }
-      
-      /* Hide any text containing YouTube */
-      *:contains("YouTube"),
-      *:contains("youtube"),
-      *:contains("YT"),
-      *:contains("You Tube") {
-        display: none !important;
-      }
-      
-      /* Custom player container */
-      .youtube-player-container {
-        background: #000;
-        position: relative;
-        overflow: hidden;
-      }
-      
-      /* Ensure iframe takes full space */
-      .youtube-player-container iframe {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        border: none;
-      }
-      
-      /* Loading overlay */
-      .youtube-loading-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10;
-      }
-      
-      /* Custom controls overlay to prevent YouTube UI */
-      .youtube-protection-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 5;
-        pointer-events: none;
-      }
-    `;
-    document.head.appendChild(style);
-
-    // Prevent right-click and copy on the entire container
-    const preventDefault = (e: Event) => {
-      e.preventDefault();
-      return false;
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('contextmenu', preventDefault);
-      container.addEventListener('copy', preventDefault);
-      container.addEventListener('cut', preventDefault);
-    }
-
-    return () => {
-      style.remove();
-      if (container) {
-        container.removeEventListener('contextmenu', preventDefault);
-        container.removeEventListener('copy', preventDefault);
-        container.removeEventListener('cut', preventDefault);
-      }
-    };
-  }, []);
-
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
-    
-    // Additional security: try to inject more CSS into the iframe
-    setTimeout(() => {
-      try {
-        if (iframeRef.current && iframeRef.current.contentWindow) {
-          const iframeDoc = iframeRef.current.contentWindow.document;
-          const iframeStyle = iframeDoc.createElement('style');
-          iframeStyle.textContent = `
-            /* Hide ALL YouTube UI in iframe */
-            .ytp-chrome-top,
-            .ytp-title-channel,
-            .ytp-title-text,
-            .ytp-share-button,
-            .ytp-cards-button,
-            .ytp-watermark,
-            .ytp-chrome-top-buttons,
-            .ytp-pause-overlay,
-            .ytp-endscreen-content,
-            .ytp-ce-element,
-            .ytp-channel-name,
-            .ytp-branding-logo,
-            .ytp-branding-icon,
-            .ytp-contextmenu,
-            .html5-endscreen,
-            .ytp-logo,
-            .ytp-logo-link,
-            .ytp-title-link,
-            .ytp-title-channel-logo,
-            .ytp-title-expanded-heading,
-            .ytp-title-expanded-title,
-            .ytp-title-expanded-overlay,
-            .ytp-button[aria-label*="YouTube"],
-            .ytp-button[title*="YouTube"],
-            .ytp-button[aria-label*="youtube"],
-            .ytp-button[title*="youtube"] {
-              display: none !important;
-              opacity: 0 !important;
-              visibility: hidden !important;
-              pointer-events: none !important;
-            }
-            
-            /* Hide any text nodes containing YouTube */
-            body * {
-              -webkit-user-select: none !important;
-              -moz-user-select: none !important;
-              -ms-user-select: none !important;
-              user-select: none !important;
-            }
-          `;
-          iframeDoc.head.appendChild(iframeStyle);
-        }
-      } catch (e) {
-        // Cross-origin restriction - expected
-      }
-    }, 1000);
-  };
-
-  // Generate embed URL with ALL branding disabled
-  const getEmbedUrl = () => {
-    const params = new URLSearchParams({
-      'autoplay': '0',
-      'controls': '1',
-      'disablekb': '1',
-      'fs': '0',
-      'modestbranding': '1',
-      'rel': '0',
-      'showinfo': '0',
-      'iv_load_policy': '3',
-      'cc_load_policy': '0',
-      'enablejsapi': '0',
-      'origin': window.location.origin,
-      'widget_referrer': window.location.origin,
-      'autohide': '1',
-      'color': 'white',
-      'theme': 'dark',
-      'loop': '0',
-      'playsinline': '1',
-      'controlsList': 'nodownload nofullscreen noremoteplayback noplaybackrate',
-      'disablePictureInPicture': '1',
-      'playsInline': '1',
-      'preload': 'none',
-      'mute': '0',
-      'playlist': videoId
-    });
-
-    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-  };
-
-  return (
-    <div ref={containerRef} className="youtube-player-container relative w-full h-full">
-      {!isLoaded && (
-        <div className="youtube-loading-overlay">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p>Loading video...</p>
-          </div>
-        </div>
-      )}
-      
-      <iframe
-        ref={iframeRef}
-        src={getEmbedUrl()}
-        title={title}
-        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen={false}
-        referrerPolicy="no-referrer"
-        sandbox="allow-same-origin allow-scripts"
-        loading="lazy"
-        onLoad={handleIframeLoad}
-        style={{
-          backgroundColor: '#000',
-        }}
-      />
-      
-      {/* Protection overlay to block interactions with YouTube UI */}
-      <div className="youtube-protection-overlay"></div>
-    </div>
-  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -677,7 +315,12 @@ const StudentDashboard: React.FC = () => {
           if (!groupedResults[result.exam_id]) {
             groupedResults[result.exam_id] = [];
           }
-          groupedResults[result.exam_id].push(result);
+          // Ensure exam is a single object, not array
+          const examResult: ExamResult = {
+            ...result,
+            exam: Array.isArray(result.exam) ? result.exam[0] : result.exam
+          };
+          groupedResults[result.exam_id].push(examResult);
         });
 
         setExamResults(groupedResults);
@@ -998,7 +641,7 @@ const StudentDashboard: React.FC = () => {
     return "active";
   };
 
-  const formatDate = (d?: string | null) => {
+  const formatDate = (d: string | null | undefined) => {
     if (!d) return "-";
     try {
       return new Date(d).toLocaleDateString();
@@ -1007,7 +650,7 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
-  const formatDateTime = (d?: string | null) => {
+  const formatDateTime = (d: string | null | undefined) => {
     if (!d) return "-";
     try {
       return new Date(d).toLocaleString();
@@ -1205,16 +848,16 @@ const StudentDashboard: React.FC = () => {
     toast.success("Exam cancelled");
   };
 
-  const handleShowExamResults = (examId: string, examTitle: string, teacherName: string, subject: string = "") => {
+  const handleShowExamResults = (examId: string, examTitle: string, teacherName: string, subject: string | null | undefined) => {
     const results = examResults[examId] || [];
     setSelectedExamResults(results);
     setSelectedExamTitle(examTitle);
     setSelectedTeacherName(teacherName);
-    setSelectedSubject(subject);
+    setSelectedSubject(subject || "");
     setShowExamResultsModal(true);
   };
 
-  const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
+  const handleDownloadMaterial = (fileUrl: string | null | undefined, title: string) => {
     if (!fileUrl) {
       toast.error("No file available for download");
       return;
@@ -1662,7 +1305,7 @@ const StudentDashboard: React.FC = () => {
                     setSelectedSubject("");
                     setShowExamResultsModal(true);
                   } else {
-                    toast.info("You haven't taken any exams yet");
+                    toast("You haven't taken any exams yet");
                   }
                 }}
                 className="flex items-center text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
@@ -1842,7 +1485,7 @@ const StudentDashboard: React.FC = () => {
                                         <div className="flex items-center space-x-3">
                                           <Play className="w-5 h-5 text-primary-600" />
                                           <div>
-                                            <h5 className="font-semibold text-gray-900">{video.title}</h5>
+                                            <h5 className="font-semibold text-gray-900">{video.title || 'Video'}</h5>
                                             {video.description && (
                                               <p className="text-sm text-gray-600 mt-1">{video.description}</p>
                                             )}
@@ -1875,36 +1518,30 @@ const StudentDashboard: React.FC = () => {
                                             </div>
                                           ) : videoInfo.url ? (
                                             <>
-                                              {videoInfo.type === 'youtube' ? (
-                                                <YouTubePlayer 
-                                                  videoId={videoInfo.url} 
-                                                  title={video.title}
-                                                />
-                                              ) : (
-                                                <video
-                                                  key={`${video.id}-${Date.now()}`}
-                                                  src={videoInfo.url}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  controls
-                                                  controlsList="nodownload noplaybackrate"
-                                                  playsInline
-                                                  preload="metadata"
-                                                  onError={(e) => {
-                                                    setVideoErrors(prev => ({ 
-                                                      ...prev, 
-                                                      [video.id]: "Failed to load video. Please try again later." 
-                                                    }));
-                                                  }}
-                                                >
-                                                  Your browser does not support the video tag.
-                                                </video>
-                                              )}
+                                              <video
+                                                key={`${video.id}-${Date.now()}`}
+                                                src={videoInfo.url}
+                                                title={video.title || 'Video'}
+                                                className="absolute inset-0 w-full h-full"
+                                                controls
+                                                controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
+                                                playsInline
+                                                preload="metadata"
+                                                disablePictureInPicture
+                                                draggable="false"
+                                                onContextMenu={(e) => e.preventDefault()}
+                                                onDragStart={(e) => e.preventDefault()}
+                                                onError={(e) => {
+                                                  setVideoErrors(prev => ({
+                                                    ...prev,
+                                                    [video.id]: "Failed to load video. Please try again later."
+                                                  }));
+                                                }}
+                                              >
+                                                Your browser does not support the video tag.
+                                              </video>
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  Platform Video Player
-                                                </p>
+                                                <p className="text-white text-sm font-medium">{video.title || 'Video'}</p>
                                               </div>
                                             </>
                                           ) : (
