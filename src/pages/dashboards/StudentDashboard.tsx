@@ -221,18 +221,12 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
 };
 
-// Function to check if URL is YouTube
-const isYouTubeUrl = (url: string | null): boolean => {
-  if (!url) return false;
-  return url.includes('youtube.com') || url.includes('youtu.be');
-};
-
 // Function to get proper video URL based on source
 const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
-  if (isYouTubeUrl(videoUrl)) {
-    const youtubeId = extractYouTubeVideoId(videoUrl);
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+  if (youtubeId) {
     return { 
       url: youtubeId, 
       type: 'youtube' 
@@ -248,10 +242,10 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
 };
 
 // Function to create secure YouTube embed URL - إعدادات لإخفاء كل شيء
-const getSecureYouTubeEmbedUrl = (videoId: string): string => {
+const getYouTubeEmbedUrl = (videoId: string): string => {
   const params = new URLSearchParams({
     'autoplay': '1',
-    'mute': '0',
+    'playsinline': '1',
     'controls': '1',
     'disablekb': '1', // تعطيل مفاتيح لوحة المفاتيح
     'fs': '0', // إخفاء زر ملء الشاشة
@@ -260,125 +254,17 @@ const getSecureYouTubeEmbedUrl = (videoId: string): string => {
     'showinfo': '0', // إخفاء معلومات الفيديو
     'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
     'cc_load_policy': '0', // إخفاء الترجمة
-    'playsinline': '1',
     'enablejsapi': '0', // تعطيل JavaScript API
     'origin': window.location.origin,
     'widget_referrer': window.location.origin,
+    'playsinline': '1',
+    'color': 'white',
+    'theme': 'dark',
+    'autohide': '1', // إخفاء عناصر التحكم تلقائياً
+    'hl': 'en', // لغة الواجهة
   });
 
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-};
-
-// Secure YouTube Player Component
-const SecureYouTubePlayer: React.FC<{ videoId: string; title: string }> = ({ videoId, title }) => {
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  // Prevent right click and other interactions
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
-    
-    // Try to inject CSS to hide YouTube elements
-    try {
-      const iframe = iframeRef.current;
-      if (iframe && iframe.contentDocument) {
-        const style = iframe.contentDocument.createElement('style');
-        style.textContent = `
-          .ytp-chrome-top,
-          .ytp-title,
-          .ytp-watermark,
-          .ytp-branding-logo,
-          .ytp-gradient-top,
-          .ytp-gradient-bottom,
-          .ytp-ce-element,
-          .ytp-chrome-bottom,
-          .ytp-pause-overlay,
-          .ytp-endscreen-content,
-          .ytp-iv-video-content,
-          .annotation,
-          .iv-branding,
-          .ytp-endscreen-link {
-            display: none !important;
-            visibility: hidden !important;
-            opacity: 0 !important;
-          }
-          
-          html, body {
-            overflow: hidden !important;
-          }
-          
-          .html5-video-player {
-            background: #000 !important;
-          }
-        `;
-        iframe.contentDocument.head.appendChild(style);
-      }
-    } catch (error) {
-      // Cross-origin error is expected, ignore
-    }
-  };
-
-  return (
-    <div className="relative w-full h-full">
-      {/* Loading overlay */}
-      {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div>
-        </div>
-      )}
-
-      {/* Protective overlay - لمنع التفاعل مع YouTube */}
-      <div 
-        className="absolute inset-0 z-30"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }}
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        }}
-        style={{
-          pointerEvents: 'auto',
-          cursor: 'default'
-        }}
-      />
-
-      {/* YouTube iframe with maximum restrictions */}
-      <iframe
-        ref={iframeRef}
-        src={getSecureYouTubeEmbedUrl(videoId)}
-        title={title}
-        className="absolute inset-0 w-full h-full z-20"
-        frameBorder="0"
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen={false} // منع ملء الشاشة
-        referrerPolicy="strict-origin-when-cross-origin"
-        sandbox="allow-same-origin allow-scripts allow-forms"
-        scrolling="no"
-        loading="lazy"
-        onLoad={handleIframeLoad}
-        style={{
-          pointerEvents: 'none' // تعطيل التفاعل مع iframe نفسه
-        }}
-      />
-
-      {/* Additional overlay for extra protection */}
-      <div 
-        className="absolute top-0 left-0 right-0 h-12 z-40"
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)' }}
-      />
-      <div 
-        className="absolute bottom-0 left-0 right-0 h-16 z-40"
-        style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}
-      />
-    </div>
-  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -1400,7 +1286,7 @@ const StudentDashboard: React.FC = () => {
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Date & Time
                             </th>
-                            <th className="px6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Status
                             </th>
                           </tr>
@@ -1705,32 +1591,54 @@ const StudentDashboard: React.FC = () => {
                                               <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
                                               <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
                                             </div>
-                                          ) : videoInfo.url && videoInfo.type === 'youtube' ? (
-                                            // استخدام SecureYouTubePlayer للفيديوهات من YouTube
-                                            <SecureYouTubePlayer 
-                                              videoId={videoInfo.url} 
-                                              title={video.title}
-                                            />
-                                          ) : videoInfo.url && videoInfo.type !== 'youtube' ? (
-                                            // Direct/MP4 Video Player للفيديوهات الأخرى
-                                            <video
-                                              key={`${video.id}-${Date.now()}`}
-                                              src={videoInfo.url}
-                                              title={video.title}
-                                              className="absolute inset-0 w-full h-full"
-                                              controls
-                                              controlsList="nodownload noplaybackrate"
-                                              playsInline
-                                              preload="metadata"
-                                              onError={(e) => {
-                                                setVideoErrors(prev => ({ 
-                                                  ...prev, 
-                                                  [video.id]: "Failed to load video. Please try again later." 
-                                                }));
-                                              }}
-                                            >
-                                              Your browser does not support the video tag.
-                                            </video>
+                                          ) : videoInfo.url ? (
+                                            <>
+                                              {videoInfo.type === 'youtube' ? (
+                                                // YouTube iframe with maximum privacy
+                                                <div className="absolute inset-0 w-full h-full">
+                                                  <iframe
+                                                    src={getYouTubeEmbedUrl(videoInfo.url)}
+                                                    title={video.title}
+                                                    className="absolute inset-0 w-full h-full"
+                                                    frameBorder="0"
+                                                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                                                    allowFullScreen={false}
+                                                    referrerPolicy="strict-origin-when-cross-origin"
+                                                    sandbox="allow-same-origin allow-scripts allow-forms"
+                                                    loading="lazy"
+                                                    style={{
+                                                      pointerEvents: 'auto',
+                                                    }}
+                                                  ></iframe>
+                                                </div>
+                                              ) : (
+                                                // Direct/MP4 Video Player
+                                                <video
+                                                  key={`${video.id}-${Date.now()}`}
+                                                  src={videoInfo.url}
+                                                  title={video.title}
+                                                  className="absolute inset-0 w-full h-full"
+                                                  controls
+                                                  controlsList="nodownload noplaybackrate"
+                                                  playsInline
+                                                  preload="metadata"
+                                                  onError={(e) => {
+                                                    setVideoErrors(prev => ({ 
+                                                      ...prev, 
+                                                      [video.id]: "Failed to load video. Please try again later." 
+                                                    }));
+                                                  }}
+                                                >
+                                                  Your browser does not support the video tag.
+                                                </video>
+                                              )}
+                                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                                                <p className="text-white text-sm font-medium">{video.title}</p>
+                                                <p className="text-gray-300 text-xs">
+                                                  {videoInfo.type === 'youtube' ? 'Secure Video Player' : 'Direct Video'}
+                                                </p>
+                                              </div>
+                                            </>
                                           ) : (
                                             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
                                               <Video className="w-16 h-16 text-yellow-500 mb-4" />
@@ -1738,13 +1646,6 @@ const StudentDashboard: React.FC = () => {
                                               <p className="text-gray-300 text-sm">This video is currently unavailable.</p>
                                             </div>
                                           )}
-                                          {/* Video Info Overlay */}
-                                          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                            <p className="text-white text-sm font-medium">{video.title}</p>
-                                            <p className="text-gray-300 text-xs">
-                                              {videoInfo.type === 'youtube' ? 'Secure video player' : 'Video'}
-                                            </p>
-                                          </div>
                                         </div>
                                       </div>
                                     )}
@@ -1915,7 +1816,7 @@ const StudentDashboard: React.FC = () => {
                               ) : (
                                 <p className="text-gray-500 text-center py-4">No study materials available</p>
                               )}
-                            </div>
+                        </div>
                           )}
                         </div>
                       </div>
