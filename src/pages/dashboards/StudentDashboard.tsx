@@ -241,14 +241,14 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Function to create completely private YouTube embed URL with all branding removed
+// Function to create YouTube embed URL without any branding
 const getYouTubeEmbedUrl = (videoId: string): string => {
   const params = new URLSearchParams({
     'playsinline': '1',
     'controls': '1',
     'disablekb': '1',
     'fs': '0',
-    'modestbranding': '0',
+    'modestbranding': '1',
     'rel': '0',
     'showinfo': '0',
     'iv_load_policy': '3',
@@ -256,94 +256,11 @@ const getYouTubeEmbedUrl = (videoId: string): string => {
     'enablejsapi': '0',
     'origin': window.location.origin,
     'widget_referrer': window.location.origin,
-    'color': 'white',
-    'theme': 'dark',
     'autohide': '1',
     'autoplay': '0',
-    'loop': '0',
-    'playlist': videoId,
-    'mute': '0',
-    'playinline': '1',
-    'disablePictureInPicture': '1',
-    'controlsList': 'nodownload nofullscreen noremoteplayback'
   });
 
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-};
-
-// Custom YouTube player wrapper to hide all YouTube branding
-const YouTubePlayerWrapper: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
-  const [iframeLoaded, setIframeLoaded] = useState(false);
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
-
-  useEffect(() => {
-    const handleIframeLoad = () => {
-      setIframeLoaded(true);
-      
-      // Add CSS to hide YouTube branding
-      const style = document.createElement('style');
-      style.textContent = `
-        .youtube-player-wrapper {
-          position: relative;
-          overflow: hidden;
-        }
-        .youtube-player-wrapper iframe {
-          filter: invert(0);
-        }
-        .youtube-branding-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          pointer-events: none;
-          z-index: 10;
-          background: linear-gradient(to bottom, transparent 90%, #000 100%);
-        }
-      `;
-      document.head.appendChild(style);
-    };
-
-    return () => {
-      const styles = document.querySelectorAll('style');
-      styles.forEach(style => {
-        if (style.textContent?.includes('youtube-player-wrapper')) {
-          style.remove();
-        }
-      });
-    };
-  }, []);
-
-  return (
-    <div className="youtube-player-wrapper relative w-full h-full">
-      <iframe
-        ref={iframeRef}
-        src={getYouTubeEmbedUrl(videoId)}
-        title={title}
-        className={`absolute inset-0 w-full h-full ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`}
-        frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen={false}
-        referrerPolicy="strict-origin-when-cross-origin"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
-        loading="lazy"
-        onLoad={() => setIframeLoaded(true)}
-        style={{
-          backgroundColor: '#000',
-        }}
-      />
-      {!iframeLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p>Loading video player...</p>
-          </div>
-        </div>
-      )}
-      {/* Overlay to hide any remaining YouTube UI elements */}
-      <div className="youtube-branding-overlay"></div>
-    </div>
-  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -1059,7 +976,6 @@ const StudentDashboard: React.FC = () => {
         if (action === "showVideos") setShowVideosPanel(true);
       }}
     >
-      {/* Modal for active exam */}
       {activeExam && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1282,7 +1198,6 @@ const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Modal for exam results */}
       {showExamResultsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1412,7 +1327,6 @@ const StudentDashboard: React.FC = () => {
       )}
 
       <div className="space-y-6">
-        {/* Welcome */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
             {`Welcome, ${user?.name || "Student"}`}
@@ -1443,9 +1357,7 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Overview cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Today's lessons */}
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
               <BookOpen className="w-5 h-5 text-primary-500 mr-2" />
@@ -1466,7 +1378,6 @@ const StudentDashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Pending assignments */}
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
               <FileText className="w-5 h-5 text-secondary-500 mr-2" />
@@ -1489,7 +1400,6 @@ const StudentDashboard: React.FC = () => {
             )}
           </div>
 
-          {/* AI Suggestions */}
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
               <Calendar className="w-5 h-5 text-accent-500 mr-2" />
@@ -1512,7 +1422,6 @@ const StudentDashboard: React.FC = () => {
             )}
           </div>
 
-          {/* Achievements */}
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
               <Award className="w-5 h-5 text-warning-500 mr-2" />
@@ -1541,7 +1450,6 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Subscriptions section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -1651,10 +1559,17 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                <YouTubePlayerWrapper 
-                                                  videoId={videoInfo.url} 
+                                                <iframe
+                                                  src={getYouTubeEmbedUrl(videoInfo.url)}
                                                   title={video.title}
-                                                />
+                                                  className="absolute inset-0 w-full h-full"
+                                                  frameBorder="0"
+                                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                                  allowFullScreen={false}
+                                                  referrerPolicy="strict-origin-when-cross-origin"
+                                                  sandbox="allow-same-origin allow-scripts"
+                                                  loading="lazy"
+                                                ></iframe>
                                               ) : (
                                                 <video
                                                   key={`${video.id}-${Date.now()}`}
@@ -1678,7 +1593,7 @@ const StudentDashboard: React.FC = () => {
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                                                 <p className="text-white text-sm font-medium">{video.title}</p>
                                                 <p className="text-gray-300 text-xs">
-                                                  {videoInfo.type === 'youtube' ? 'Secure Video Player' : 'Direct Video'}
+                                                  {videoInfo.type === 'youtube' ? 'Video Player' : 'Direct Video'}
                                                 </p>
                                               </div>
                                             </>
