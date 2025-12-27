@@ -244,24 +244,20 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
 // Function to create secure YouTube embed URL - إعدادات لإخفاء كل شيء
 const getYouTubeEmbedUrl = (videoId: string): string => {
   const params = new URLSearchParams({
-    'autoplay': '1',
     'playsinline': '1',
     'controls': '1',
     'disablekb': '1', // تعطيل مفاتيح لوحة المفاتيح
     'fs': '0', // إخفاء زر ملء الشاشة
-    'modestbranding': '1', // تقليل الشعار
+    'modestbranding': '1', // إخفاء شعار يوتيوب
     'rel': '0', // إخفاء الفيديوهات المقترحة
-    'showinfo': '0', // إخفاء معلومات الفيديو
     'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
     'cc_load_policy': '0', // إخفاء الترجمة
     'enablejsapi': '0', // تعطيل JavaScript API
     'origin': window.location.origin,
     'widget_referrer': window.location.origin,
-    'playsinline': '1',
     'color': 'white',
     'theme': 'dark',
-    'autohide': '1', // إخفاء عناصر التحكم تلقائياً
-    'hl': 'en', // لغة الواجهة
+    'hl': 'ar', // لغة الواجهة العربية
   });
 
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
@@ -1860,5 +1856,6 @@ const StudentDashboard: React.FC = () => {
     </DashboardLayout>
   );
 };
+
 
 export default StudentDashboard;
