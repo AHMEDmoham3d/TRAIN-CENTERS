@@ -241,26 +241,109 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Function to create secure YouTube embed URL - إعدادات لإخفاء كل شيء
+// Function to create completely private YouTube embed URL with all branding removed
 const getYouTubeEmbedUrl = (videoId: string): string => {
   const params = new URLSearchParams({
     'playsinline': '1',
     'controls': '1',
-    'disablekb': '1', // تعطيل مفاتيح لوحة المفاتيح
-    'fs': '0', // إخفاء زر ملء الشاشة
-    'modestbranding': '1', // إخفاء شعار يوتيوب
-    'rel': '0', // إخفاء الفيديوهات المقترحة
-    'iv_load_policy': '3', // إخفاء التعليقات التوضيحية
-    'cc_load_policy': '0', // إخفاء الترجمة
-    'enablejsapi': '0', // تعطيل JavaScript API
+    'disablekb': '1',
+    'fs': '0',
+    'modestbranding': '0',
+    'rel': '0',
+    'showinfo': '0',
+    'iv_load_policy': '3',
+    'cc_load_policy': '0',
+    'enablejsapi': '0',
     'origin': window.location.origin,
     'widget_referrer': window.location.origin,
     'color': 'white',
     'theme': 'dark',
-    'hl': 'ar', // لغة الواجهة العربية
+    'autohide': '1',
+    'autoplay': '0',
+    'loop': '0',
+    'playlist': videoId,
+    'mute': '0',
+    'playinline': '1',
+    'disablePictureInPicture': '1',
+    'controlsList': 'nodownload nofullscreen noremoteplayback'
   });
 
   return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+};
+
+// Custom YouTube player wrapper to hide all YouTube branding
+const YouTubePlayerWrapper: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    const handleIframeLoad = () => {
+      setIframeLoaded(true);
+      
+      // Add CSS to hide YouTube branding
+      const style = document.createElement('style');
+      style.textContent = `
+        .youtube-player-wrapper {
+          position: relative;
+          overflow: hidden;
+        }
+        .youtube-player-wrapper iframe {
+          filter: invert(0);
+        }
+        .youtube-branding-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 10;
+          background: linear-gradient(to bottom, transparent 90%, #000 100%);
+        }
+      `;
+      document.head.appendChild(style);
+    };
+
+    return () => {
+      const styles = document.querySelectorAll('style');
+      styles.forEach(style => {
+        if (style.textContent?.includes('youtube-player-wrapper')) {
+          style.remove();
+        }
+      });
+    };
+  }, []);
+
+  return (
+    <div className="youtube-player-wrapper relative w-full h-full">
+      <iframe
+        ref={iframeRef}
+        src={getYouTubeEmbedUrl(videoId)}
+        title={title}
+        className={`absolute inset-0 w-full h-full ${iframeLoaded ? 'opacity-100' : 'opacity-0'}`}
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen={false}
+        referrerPolicy="strict-origin-when-cross-origin"
+        sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+        loading="lazy"
+        onLoad={() => setIframeLoaded(true)}
+        style={{
+          backgroundColor: '#000',
+        }}
+      />
+      {!iframeLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p>Loading video player...</p>
+          </div>
+        </div>
+      )}
+      {/* Overlay to hide any remaining YouTube UI elements */}
+      <div className="youtube-branding-overlay"></div>
+    </div>
+  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -309,7 +392,7 @@ const StudentDashboard: React.FC = () => {
           .single();
 
         if (error) {
-          console.error("❌ Error fetching center info:", error);
+          console.error("Error fetching center info:", error);
           return;
         }
 
@@ -318,7 +401,7 @@ const StudentDashboard: React.FC = () => {
           setCenterSubdomain(centerData.subdomain || centerData.name);
         }
       } catch (error) {
-        console.error("🚨 Unexpected error fetching center info:", error);
+        console.error("Unexpected error fetching center info:", error);
       }
     };
 
@@ -351,7 +434,7 @@ const StudentDashboard: React.FC = () => {
           .order("submitted_at", { ascending: false });
 
         if (error) {
-          console.error("❌ Error fetching exam results:", error);
+          console.error("Error fetching exam results:", error);
           return;
         }
 
@@ -365,7 +448,7 @@ const StudentDashboard: React.FC = () => {
 
         setExamResults(groupedResults);
       } catch (error) {
-        console.error("🚨 Error fetching exam results:", error);
+        console.error("Error fetching exam results:", error);
       }
     };
 
@@ -411,7 +494,6 @@ const StudentDashboard: React.FC = () => {
           return;
         }
 
-        // 1️⃣ جلب الاشتراكات النشطة للطالب
         const { data: subs, error: subError } = await supabase
           .from("subscriptions")
           .select("id, teacher_id, is_active, start_date, end_date, center_wide")
@@ -419,19 +501,17 @@ const StudentDashboard: React.FC = () => {
           .eq("is_active", true);
 
         if (subError) {
-          console.error("❌ Subscription fetch error:", subError);
+          console.error("Subscription fetch error:", subError);
           toast.error("Failed to load subscriptions");
           return;
         }
 
-        // 2️⃣ إذا كان هناك اشتراكات، جلب المحتوى المرتبط
         if (subs && subs.length > 0) {
           const teacherIds = subs.map((s: any) => s.teacher_id);
           const uniqueTeacherIds = [...new Set(teacherIds)];
 
           const isCenterWide = subs.some((s: any) => s.center_wide === true);
 
-          // جلب بيانات المدرسين
           const { data: teachersData } = await supabase
             .from("teachers")
             .select("id, full_name, email, subject, image_url, center_id")
@@ -455,9 +535,7 @@ const StudentDashboard: React.FC = () => {
             materials: [],
           }));
 
-          // 3️⃣ جلب المحتوى بناءً على نوع الاشتراك
           if (isCenterWide && centerId) {
-            // اشتراك شامل - جلب كل محتوى السنتر
             const { data: centerTeachers } = await supabase
               .from("teachers")
               .select("id")
@@ -466,7 +544,6 @@ const StudentDashboard: React.FC = () => {
             if (centerTeachers && centerTeachers.length > 0) {
               const centerTeacherIds = centerTeachers.map(t => t.id);
 
-              // جلب الفيديوهات مع الامتحانات المرتبطة
               const { data: videosData } = await supabase
                 .from("videos")
                 .select("id, teacher_id, title, description, video_url, uploaded_at")
@@ -475,7 +552,6 @@ const StudentDashboard: React.FC = () => {
               if (videosData && videosData.length > 0) {
                 const videoIds = videosData.map(v => v.id);
                 
-                // جلب الامتحانات
                 const { data: exams } = await supabase
                   .from('exams')
                   .select('id, title, video_id, teacher_id, description, total_marks, created_at, duration_minutes')
@@ -522,7 +598,6 @@ const StudentDashboard: React.FC = () => {
                 }
               }
 
-              // جلب المواد الدراسية
               const { data: materialsData } = await supabase
                 .from("materials")
                 .select("id, teacher_id, title, description, file_url, uploaded_at")
@@ -535,7 +610,6 @@ const StudentDashboard: React.FC = () => {
               }
             }
           } else {
-            // اشتراك عادي - جلب محتوى المدرسين المحددين فقط
             const { data: videosData } = await supabase
               .from("videos")
               .select("id, teacher_id, title, description, video_url, uploaded_at")
@@ -590,7 +664,6 @@ const StudentDashboard: React.FC = () => {
               }
             }
 
-            // جلب المواد الدراسية
             const { data: materialsData } = await supabase
               .from("materials")
               .select("id, teacher_id, title, description, file_url, uploaded_at")
@@ -608,7 +681,6 @@ const StudentDashboard: React.FC = () => {
           setSubscriptionsData([]);
         }
 
-        // بيانات تجريبية للداشبورد
         setUpcomingLessons([
           {
             id: "1",
@@ -648,7 +720,7 @@ const StudentDashboard: React.FC = () => {
         }
 
       } catch (error) {
-        console.error("🚨 Unexpected error in dashboard:", error);
+        console.error("Unexpected error in dashboard:", error);
         toast.error("Failed to load dashboard data");
 
         setUpcomingLessons([
@@ -851,7 +923,7 @@ const StudentDashboard: React.FC = () => {
         .select();
 
       if (error) {
-        console.error("❌ Error saving exam result:", error);
+        console.error("Error saving exam result:", error);
         toast.error("Failed to save exam result");
         throw error;
       }
@@ -883,7 +955,7 @@ const StudentDashboard: React.FC = () => {
       toast.success(`Exam submitted! Your score: ${score}%`);
 
     } catch (error) {
-      console.error("🚨 Error submitting exam:", error);
+      console.error("Error submitting exam:", error);
       toast.error("Failed to submit exam");
     }
 
@@ -991,7 +1063,6 @@ const StudentDashboard: React.FC = () => {
       {activeExam && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            {/* Exam Header */}
             <div className="bg-primary-600 text-white p-4 flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold">{activeExam.examTitle}</h2>
@@ -1021,11 +1092,9 @@ const StudentDashboard: React.FC = () => {
               </button>
             </div>
 
-            {/* Exam Content */}
             <div className="p-6 overflow-y-auto max-h-[60vh]">
               {!activeExam.isSubmitted ? (
                 <>
-                  {/* Current Question */}
                   <div className="mb-8">
                     <div className="bg-gradient-to-r from-primary-50 to-primary-100 rounded-lg p-6 mb-6 border border-primary-200">
                       <div className="flex items-start space-x-3">
@@ -1040,7 +1109,6 @@ const StudentDashboard: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Options */}
                     <div className="space-y-4">
                       {activeExam.questions[activeExam.currentQuestionIndex]?.exam_options.map((option, index) => {
                         const questionId = activeExam.questions[activeExam.currentQuestionIndex].id;
@@ -1087,7 +1155,6 @@ const StudentDashboard: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Navigation Buttons */}
                   <div className="flex justify-between items-center pt-4 border-t">
                     <button
                       onClick={handlePrevQuestion}
@@ -1125,7 +1192,6 @@ const StudentDashboard: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Progress Indicators */}
                   <div className="mt-6">
                     <p className="text-sm text-gray-600 mb-2">Questions:</p>
                     <div className="flex flex-wrap gap-2">
@@ -1156,7 +1222,6 @@ const StudentDashboard: React.FC = () => {
                   </div>
                 </>
               ) : (
-                /* Results Screen */
                 <div className="text-center py-8">
                   <div className="mb-6">
                     <CheckCircle className="w-20 h-20 text-green-500 mx-auto mb-4" />
@@ -1476,7 +1541,7 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Subscriptions section - المحتوى الرئيسي */}
+        {/* Subscriptions section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -1526,7 +1591,6 @@ const StudentDashboard: React.FC = () => {
 
                     {showVideosPanel && (
                       <div className="space-y-8">
-                        {/* Videos with Exams Section */}
                         <div>
                           <h4 className="font-semibold text-gray-800 mb-4 text-lg">
                             Course Content ({sub.videosWithExams.length} Videos)
@@ -1535,7 +1599,7 @@ const StudentDashboard: React.FC = () => {
                           {isExpired ? (
                             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                               <p className="text-red-600 font-medium">
-                                ⚠️ Your subscription has expired. Please renew to access all content.
+                                Your subscription has expired. Please renew to access all content.
                               </p>
                             </div>
                           ) : sub.videosWithExams.length > 0 ? (
@@ -1545,7 +1609,6 @@ const StudentDashboard: React.FC = () => {
                                 
                                 return (
                                   <div key={video.id} className="border rounded-lg overflow-hidden">
-                                    {/* Video Section */}
                                     <div 
                                       className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
                                       onClick={() => handleVideoPlay(video.id)}
@@ -1569,7 +1632,6 @@ const StudentDashboard: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {/* Video Player */}
                                     {activeVideo === video.id && video.video_url && (
                                       <div className="p-4 bg-black">
                                         <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
@@ -1589,25 +1651,11 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                // YouTube iframe with maximum privacy
-                                                <div className="absolute inset-0 w-full h-full">
-                                                  <iframe
-                                                    src={getYouTubeEmbedUrl(videoInfo.url)}
-                                                    title={video.title}
-                                                    className="absolute inset-0 w-full h-full"
-                                                    frameBorder="0"
-                                                    allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-                                                    allowFullScreen={false}
-                                                    referrerPolicy="strict-origin-when-cross-origin"
-                                                    sandbox="allow-same-origin allow-scripts allow-forms"
-                                                    loading="lazy"
-                                                    style={{
-                                                      pointerEvents: 'auto',
-                                                    }}
-                                                  ></iframe>
-                                                </div>
+                                                <YouTubePlayerWrapper 
+                                                  videoId={videoInfo.url} 
+                                                  title={video.title}
+                                                />
                                               ) : (
-                                                // Direct/MP4 Video Player
                                                 <video
                                                   key={`${video.id}-${Date.now()}`}
                                                   src={videoInfo.url}
@@ -1645,7 +1693,6 @@ const StudentDashboard: React.FC = () => {
                                       </div>
                                     )}
 
-                                    {/* Exams for this Video */}
                                     {video.exams.length > 0 && (
                                       <div className="border-t">
                                         <div className="p-4 bg-blue-50">
@@ -1709,7 +1756,6 @@ const StudentDashboard: React.FC = () => {
                                                         )}
                                                       </div>
                                                       
-                                                      {/* Results Summary */}
                                                       {resultsCount > 0 && latestResult && (
                                                         <div className="mt-3 pt-3 border-t border-gray-100">
                                                           <div className="flex justify-between items-center">
@@ -1773,7 +1819,6 @@ const StudentDashboard: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Materials Section */}
                         <div>
                           <h4 className="font-semibold text-gray-800 mb-4 text-lg">
                             Study Materials ({sub.materials.length})
@@ -1782,7 +1827,7 @@ const StudentDashboard: React.FC = () => {
                           {isExpired ? (
                             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                               <p className="text-red-600 font-medium">
-                                ⚠️ Your subscription has expired. Please renew to access materials.
+                                Your subscription has expired. Please renew to access materials.
                               </p>
                             </div>
                           ) : (
@@ -1823,7 +1868,6 @@ const StudentDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Other dashboard sections */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
           {courseProgress.length > 0 ? (
@@ -1856,6 +1900,5 @@ const StudentDashboard: React.FC = () => {
     </DashboardLayout>
   );
 };
-
 
 export default StudentDashboard;
