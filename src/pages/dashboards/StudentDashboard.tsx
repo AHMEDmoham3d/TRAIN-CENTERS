@@ -188,11 +188,13 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+    // If it's already a direct URL, return it
     return videoUrl;
   }
   
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
+  // Handle different URL formats
   if (videoUrl.includes('.mp4') || videoUrl.includes('.webm') || videoUrl.includes('.mov')) {
     let filename = videoUrl;
     if (filename.includes('/')) {
@@ -218,6 +220,7 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
     }
   }
   
+  // Default fallback
   return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
 };
 
@@ -225,20 +228,50 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
 const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
+  // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
+    // For YouTube, we'll use a service to get direct video URL
     return { 
       url: `https://www.youtube.com/watch?v=${youtubeId}`, 
       type: 'youtube' 
     };
   }
   
+  // Check if it's a direct URL (starts with http)
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return { url: videoUrl, type: 'direct' };
   }
   
+  // Otherwise, assume it's from Supabase storage
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   return { url: supabaseUrl, type: 'supabase' };
+};
+
+// Function to get direct video stream URL (for YouTube and other services)
+const getDirectVideoUrl = async (videoUrl: string | null): Promise<string | null> => {
+  if (!videoUrl) return null;
+  
+  try {
+    const videoInfo = getVideoUrl(videoUrl);
+    
+    if (videoInfo.type === 'youtube') {
+      // For YouTube, we need to use a proxy service
+      // Here we'll use a simple approach - you might want to use a proper YouTube API
+      const youtubeId = extractYouTubeVideoId(videoInfo.url);
+      if (youtubeId) {
+        // Use yt-dlp or similar service - this is a simplified approach
+        // In production, you should use a backend service for this
+        return `https://www.youtube.com/embed/${youtubeId}`;
+      }
+    }
+    
+    // For other types, return the URL directly
+    return videoInfo.url;
+  } catch (error) {
+    console.error('Error getting direct video URL:', error);
+    return null;
+  }
 };
 
 // Custom Video Player Component
@@ -256,12 +289,47 @@ const CustomVideoPlayer: React.FC<{
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
+  const [actualVideoUrl, setActualVideoUrl] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Handle video events
+  // Load video URL
+  useEffect(() => {
+    const loadVideoUrl = async () => {
+      if (!videoUrl) {
+        setHasError(true);
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setHasError(false);
+        
+        const videoInfo = getVideoUrl(videoUrl);
+        
+        if (videoInfo.type === 'youtube') {
+          // For YouTube, we need to use iframe
+          // We'll set actualVideoUrl to null and handle it differently
+          setActualVideoUrl(null);
+          setIsLoading(false);
+        } else {
+          // For other video types, use direct URL
+          setActualVideoUrl(videoInfo.url);
+        }
+      } catch (error) {
+        console.error('Error loading video URL:', error);
+        setHasError(true);
+        setIsLoading(false);
+      }
+    };
+
+    loadVideoUrl();
+  }, [videoUrl]);
+
+  // Handle video events for direct videos
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement || !videoUrl) return;
+    if (!videoElement || !actualVideoUrl || getVideoUrl(videoUrl).type === 'youtube') return;
 
     const handleLoadedData = () => {
       setIsLoading(false);
@@ -302,7 +370,7 @@ const CustomVideoPlayer: React.FC<{
       videoElement.removeEventListener('error', handleError);
       videoElement.removeEventListener('ended', handleEnded);
     };
-  }, [videoUrl, volume]);
+  }, [actualVideoUrl, videoUrl, volume]);
 
   // Handle controls visibility
   useEffect(() => {
@@ -352,7 +420,7 @@ const CustomVideoPlayer: React.FC<{
     };
   }, []);
 
-  // Video control functions
+  // Video control functions for direct videos
   const togglePlay = () => {
     if (!videoRef.current) return;
     
@@ -412,6 +480,11 @@ const CustomVideoPlayer: React.FC<{
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Get video type
+  const videoInfo = getVideoUrl(videoUrl);
+  const isYouTube = videoInfo.type === 'youtube';
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+
   if (!videoUrl) {
     return (
       <div className="w-full h-64 md:h-96 bg-gray-900 rounded-lg flex flex-col items-center justify-center p-6">
@@ -422,6 +495,54 @@ const CustomVideoPlayer: React.FC<{
     );
   }
 
+  if (isYouTube && youtubeId) {
+    // For YouTube videos, use iframe with minimal branding
+    return (
+      <div 
+        ref={containerRef}
+        className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          return false;
+        }}
+      >
+        {/* YouTube iframe with minimal branding */}
+        <iframe
+          src={`https://www.youtube-nocookie.com/embed/${youtubeId}?modestbranding=1&rel=0&showinfo=0&controls=1&disablekb=1`}
+          title={title}
+          className="absolute inset-0 w-full h-full"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
+        />
+        
+        {/* Custom overlay to hide YouTube branding */}
+        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
+          <div className="flex justify-between items-start">
+            <div className="text-white max-w-[70%]">
+              <h3 className="font-semibold text-lg truncate">{title}</h3>
+              <p className="text-sm text-gray-300">Platform Video Player</p>
+            </div>
+          </div>
+        </div>
+        
+        {/* Protection overlay to prevent right-click */}
+        <div 
+          className="absolute inset-0 z-20"
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+          }}
+          style={{ pointerEvents: 'none' }}
+        />
+      </div>
+    );
+  }
+
+  // For non-YouTube videos (Supabase or direct URLs)
   return (
     <div 
       ref={containerRef}
@@ -431,10 +552,10 @@ const CustomVideoPlayer: React.FC<{
         return false;
       }}
     >
-      {/* Video element */}
+      {/* Video element for non-YouTube videos */}
       <video
         ref={videoRef}
-        src={videoUrl}
+        src={actualVideoUrl || ''}
         className="absolute inset-0 w-full h-full object-contain bg-black"
         controls={false}
         playsInline
@@ -477,7 +598,7 @@ const CustomVideoPlayer: React.FC<{
       {/* Center play button overlay */}
       {!isPlaying && !isLoading && !hasError && (
         <div 
-          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
+          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-10"
           onClick={togglePlay}
         >
           <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
@@ -488,7 +609,7 @@ const CustomVideoPlayer: React.FC<{
 
       {/* Controls overlay */}
       <div 
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 ${
+        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 z-10 ${
           showControls ? 'opacity-100' : 'opacity-0'
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -582,7 +703,7 @@ const CustomVideoPlayer: React.FC<{
       </div>
 
       {/* Bottom gradient overlay */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none"></div>
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-0"></div>
     </div>
   );
 };
@@ -1868,7 +1989,7 @@ const StudentDashboard: React.FC = () => {
                                     {activeVideo === video.id && video.video_url && (
                                       <div className="p-4 bg-black">
                                         <CustomVideoPlayer 
-                                          videoUrl={videoInfo.url}
+                                          videoUrl={video.video_url}
                                           title={video.title}
                                         />
                                       </div>
