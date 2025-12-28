@@ -29,6 +29,11 @@ import { useAuthStore } from "../../store/authStore";
 import { supabase } from "@/lib/supabase";
 import toast from "react-hot-toast";
 
+// Import video.js
+import videojs from 'video.js';
+import 'video.js/dist/video-js.css';
+import '@videojs/youtube/dist/Youtube';
+
 interface UpcomingLesson {
   id: string;
   title: string;
@@ -241,631 +246,438 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Advanced YouTube Player with enhanced DOM manipulation
-const AdvancedYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
-  const [isLoaded, setIsLoaded] = useState(false);
+// Advanced Video Player Component using video.js
+const AdvancedVideoPlayer: React.FC<{
+  videoInfo: { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' };
+  title: string;
+}> = ({ videoInfo, title }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const playerRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const scriptInjectionRef = useRef<boolean>(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(0.7);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Create the most private embed URL with maximum restrictions
-  const getPrivateEmbedUrl = () => {
-    const params = new URLSearchParams({
-      'autoplay': '0',
-      'controls': '1',
-      'disablekb': '1',
-      'fs': '0',
-      'modestbranding': '1',
-      'rel': '0',
-      'showinfo': '0',
-      'iv_load_policy': '3',
-      'cc_load_policy': '0',
-      'enablejsapi': '0',
-      'origin': window.location.origin,
-      'widget_referrer': window.location.origin,
-      'autohide': '1',
-      'color': 'white',
-      'theme': 'dark',
-      'loop': '0',
-      'playsinline': '1',
-      'controlsList': 'nodownload nofullscreen noremoteplayback noplaybackrate',
-      'disablePictureInPicture': '1',
-      'playsInline': '1',
-      'preload': 'none',
-      'mute': '0',
-      'playlist': videoId,
-      'start': '0',
-      'end': '0',
-      'hl': 'en',
-      'cc_lang_pref': 'en',
-      'widgetid': '1',
-      'wmode': 'opaque',
-      'enablecastapi': '0',
-      'nocookie': '1'
-    });
+  // Initialize video player
+  useEffect(() => {
+    if (!videoRef.current || !videoInfo.url) return;
 
-    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-  };
+    const setupPlayer = () => {
+      if (videoInfo.type === 'youtube') {
+        // Setup YouTube player with custom controls
+        const videoElement = videoRef.current;
+        if (!videoElement) return;
 
-  // Function to inject removal script into iframe
-  const injectRemovalScript = () => {
-    if (!iframeRef.current || !iframeRef.current.contentWindow || scriptInjectionRef.current) return;
-    
-    try {
-      const iframeDoc = iframeRef.current.contentWindow.document;
-      
-      // Create script to remove YouTube elements
-      const removalScript = `
-        // Function to remove YouTube branding
-        function removeYouTubeBranding() {
-          // Remove title elements
-          const titleSelectors = [
-            '.ytp-title-text',
-            '.ytp-title-link',
-            '.ytp-title-channel',
-            '.ytp-title-channel-name',
-            '.ytp-title-subtext',
-            '.ytp-title-expanded',
-            '.ytp-title-collapsed',
-            '[class*="title"][class*="ytp"]',
-            '.ytp-chrome-top',
-            '.ytp-show-cards-title'
-          ];
-          
-          titleSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove logo and watermark
-          const logoSelectors = [
-            '.ytp-logo',
-            '.ytp-watermark',
-            '.ytp-branding-logo',
-            '.ytp-branding-icon',
-            '.ytp-branding-name',
-            '.ytp-branding',
-            '.ytp-contextmenu-logo',
-            '.yt-uix-button-icon-brand',
-            '.ytp-chrome-header',
-            '.ytp-chrome-controls .ytp-button[aria-label*="YouTube"]'
-          ];
-          
-          logoSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove suggested videos and cards
-          const suggestionSelectors = [
-            '.ytp-ce-element',
-            '.ytp-cards-button',
-            '.ytp-pause-overlay',
-            '.ytp-endscreen-content',
-            '.html5-endscreen',
-            '.ytp-suggested-action',
-            '.ytp-related-video',
-            '.ytp-videowall-still',
-            '.ytp-ce-expanding-image',
-            '.ytp-ce-channel',
-            '.ytp-ce-playlist',
-            '.ytp-ce-website',
-            '.ytp-ce-video',
-            '.ytp-ce-expanding-overlay'
-          ];
-          
-          suggestionSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove any element containing YouTube text
-          const allElements = document.querySelectorAll('*');
-          allElements.forEach(el => {
-            if (el.textContent && (
-              el.textContent.toLowerCase().includes('youtube') ||
-              el.textContent.toLowerCase().includes('you tube') ||
-              el.textContent.toLowerCase().includes('yt-be')
-            )) {
-              if (el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            }
-            
-            // Remove YouTube links
-            if (el.tagName === 'A' && el.getAttribute('href')) {
-              const href = el.getAttribute('href') || '';
-              if (href.includes('youtube.com') || href.includes('youtu.be')) {
+        // Create a custom YouTube player
+        const player = videojs(videoElement, {
+          controls: true,
+          autoplay: false,
+          preload: 'auto',
+          sources: [{
+            src: videoInfo.url!,
+            type: 'video/youtube'
+          }],
+          youtube: {
+            ytControls: 0, // Hide YouTube controls
+            modestbranding: 1,
+            rel: 0,
+            showinfo: 0,
+            iv_load_policy: 3,
+            disablekb: 1,
+            fs: 0,
+            playsinline: 1,
+            origin: window.location.origin,
+            enablejsapi: 0
+          },
+          controlBar: {
+            children: [
+              'playToggle',
+              'volumePanel',
+              'currentTimeDisplay',
+              'timeDivider',
+              'durationDisplay',
+              'progressControl',
+              'remainingTimeDisplay',
+              'customControlSpacer',
+              'playbackRateMenuButton',
+              'fullscreenToggle'
+            ]
+          }
+        });
+
+        playerRef.current = player;
+
+        // Remove YouTube branding classes
+        player.on('ready', () => {
+          const playerEl = player.el();
+          if (playerEl) {
+            // Remove any YouTube branding elements
+            const interval = setInterval(() => {
+              const ytElements = playerEl.querySelectorAll('[class*="ytp-"], [class*="youtube"], a[href*="youtube"]');
+              ytElements.forEach(el => {
                 if (el.parentNode) {
                   el.parentNode.removeChild(el);
                 }
-              }
-            }
-          });
-          
-          // Remove specific YouTube-related attributes and classes
-          const ytElements = document.querySelectorAll('[class*="ytp"], [class*="youtube"], [id*="ytp"], [id*="youtube"]');
-          ytElements.forEach(el => {
-            if (el.parentNode) {
-              const className = el.className || '';
-              if (!className.includes('html5-video-player') && 
-                  !className.includes('html5-main-video')) {
-                el.parentNode.removeChild(el);
-              }
-            }
-          });
-        }
-        
-        // Run removal on load and periodically
-        removeYouTubeBranding();
-        setInterval(removeYouTubeBranding, 1000);
-        
-        // Monitor DOM changes
-        const observer = new MutationObserver(function(mutations) {
-          mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' || mutation.type === 'subtree') {
-              removeYouTubeBranding();
-            }
-          });
-        });
-        
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true
-        });
-        
-        // Also remove on various events
-        ['load', 'DOMContentLoaded', 'click', 'mouseover', 'keydown'].forEach(event => {
-          window.addEventListener(event, removeYouTubeBranding, true);
-        });
-      `;
-      
-      // Create and inject the script
-      const script = iframeDoc.createElement('script');
-      script.textContent = removalScript;
-      iframeDoc.head.appendChild(script);
-      
-      scriptInjectionRef.current = true;
-      
-    } catch (error) {
-      // Cross-origin restriction - we'll use CSS approach instead
-    }
-  };
+              });
 
-  // Inject CSS to hide all YouTube branding
-  const injectBrandingRemovalCSS = () => {
-    const styleId = 'youtube-branding-remover-css-advanced';
-    
-    // Remove existing style if any
-    const existingStyle = document.getElementById(styleId);
-    if (existingStyle) {
-      existingStyle.remove();
-    }
-    
-    // Create new style with comprehensive selectors
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      /* Hide ALL YouTube branding automatically - EXTENSIVE LIST */
-      .advanced-youtube-player iframe {
-        filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
-        -webkit-filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
-      }
-      
-      /* Target YouTube player container */
-      .advanced-youtube-player * {
-        -webkit-user-select: none !important;
-        -moz-user-select: none !important;
-        -ms-user-select: none !important;
-        user-select: none !important;
-      }
-      
-      /* COMPREHENSIVE YOUTUBE ELEMENT HIDING */
-      /* Title and channel elements */
-      .ytp-title-text,
-      .ytp-title-link,
-      .ytp-title-channel,
-      .ytp-title-channel-name,
-      .ytp-title-subtext,
-      .ytp-title-expanded,
-      .ytp-title-collapsed,
-      .ytp-chrome-top .ytp-title,
-      [class*="title"][class*="ytp"],
-      .ytp-show-cards-title,
-      .ytp-ce-title,
-      .ytp-ce-channel-title,
-      .ytp-ce-playlist-title {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Logo, watermark and branding */
-      .ytp-logo,
-      .ytp-watermark,
-      .ytp-branding-logo,
-      .ytp-branding-icon,
-      .ytp-branding-name,
-      .ytp-branding,
-      .ytp-contextmenu-logo,
-      .yt-uix-button-icon-brand,
-      .ytp-chrome-header,
-      .ytp-button[aria-label*="YouTube"],
-      .ytp-button[title*="YouTube"],
-      .html5-video-player .ytp-branding,
-      .ytp-chrome-controls .ytp-button[aria-label*="YouTube"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Suggested videos, cards, and related content */
-      .ytp-ce-element,
-      .ytp-cards-button,
-      .ytp-pause-overlay,
-      .ytp-endscreen-content,
-      .html5-endscreen,
-      .ytp-suggested-action,
-      .ytp-related-video,
-      .ytp-videowall-still,
-      .ytp-ce-expanding-image,
-      .ytp-ce-channel,
-      .ytp-ce-playlist,
-      .ytp-ce-website,
-      .ytp-ce-video,
-      .ytp-ce-expanding-overlay,
-      .ytp-ce-text,
-      .ytp-ce-size-1920,
-      .ytp-ce-size-1920 * {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Any element containing YouTube text */
-      *:contains("YouTube"),
-      *:contains("you tube"),
-      *:contains("YT"),
-      *:contains("Youtube"),
-      *:contains("YOU TUBE") {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* YouTube links */
-      a[href*="youtube.com"],
-      a[href*="youtu.be"],
-      a[href*="youtube-nocookie.com"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Classes and IDs containing ytp or youtube */
-      [class*="ytp"][class*="title"],
-      [class*="ytp"][class*="logo"],
-      [class*="ytp"][class*="branding"],
-      [class*="ytp"][class*="watermark"],
-      [class*="ytp"][class*="channel"],
-      [class*="youtube"][class*="logo"],
-      [class*="youtube"][class*="brand"],
-      [id*="ytp"],
-      [id*="youtube"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Additional YouTube UI elements */
-      .ytp-chrome-bottom,
-      .ytp-gradient-bottom,
-      .ytp-chrome-controls .ytp-right-controls,
-      .ytp-chrome-controls .ytp-left-controls,
-      .ytp-panel,
-      .ytp-popup,
-      .ytp-tooltip,
-      .ytp-menubar,
-      .ytp-settings-button,
-      .ytp-subtitles-button {
-        /* Keep controls but remove branding from them */
-      }
-      
-      /* Custom overlay to block interactions with hidden elements */
-      .youtube-protection-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          to bottom,
-          transparent 0%,
-          transparent 20%,
-          transparent 80%,
-          transparent 100%
-        );
-        pointer-events: none;
-        z-index: 99999;
-        mix-blend-mode: multiply;
-      }
-      
-      /* Force iframe styling */
-      .advanced-youtube-player iframe {
-        isolation: isolate;
-        contain: strict;
-      }
-      
-      /* Loading overlay */
-      .youtube-player-loading {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 100000;
-      }
-    `;
-    
-    document.head.appendChild(style);
-    return styleId;
-  };
+              // Remove title and channel
+              const titleElements = playerEl.querySelectorAll('[class*="title"], [class*="channel"]');
+              titleElements.forEach(el => {
+                if (el.parentNode) {
+                  el.parentNode.removeChild(el);
+                }
+              });
+            }, 100);
 
-  // Enhanced removal function using postMessage
-  const enhancedBrandingRemoval = () => {
-    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
-    
-    // Try to inject script via postMessage (if iframe allows)
-    try {
-      iframeRef.current.contentWindow.postMessage({
-        type: 'REMOVE_YOUTUBE_BRANDING',
-        selectors: [
-          '.ytp-title',
-          '.ytp-title-text',
-          '.ytp-title-link',
-          '.ytp-title-channel',
-          '.ytp-logo',
-          '.ytp-watermark',
-          '.ytp-branding',
-          '.ytp-pause-overlay',
-          '.ytp-ce-element'
-        ]
-      }, '*');
-    } catch (error) {
-      // Silently fail if postMessage not allowed
-    }
-    
-    // Also try direct DOM manipulation (will fail on cross-origin, but try anyway)
-    try {
-      const iframeDoc = iframeRef.current.contentWindow.document;
-      
-      // This will throw cross-origin error, but we try anyway
-      const elements = iframeDoc.querySelectorAll('*');
-      elements.forEach(el => {
-        if (el.textContent && el.textContent.match(/youtube/i)) {
-          try {
-            if (el.parentNode) {
-              el.parentNode.removeChild(el);
-            }
-          } catch (e) {
-            // Cross-origin error expected
+            // Store interval for cleanup
+            playerRef.current._cleanupInterval = interval;
+
+            // Add custom styling to hide YouTube elements
+            const style = document.createElement('style');
+            style.id = 'youtube-branding-remover';
+            style.textContent = `
+              .video-js .vjs-control-bar {
+                background: rgba(0, 0, 0, 0.7) !important;
+              }
+              .vjs-youtube .ytp-chrome-top,
+              .vjs-youtube .ytp-title,
+              .vjs-youtube .ytp-title-text,
+              .vjs-youtube .ytp-title-channel,
+              .vjs-youtube .ytp-watermark,
+              .vjs-youtube .ytp-logo,
+              .vjs-youtube .ytp-branding,
+              .vjs-youtube .ytp-pause-overlay,
+              .vjs-youtube .ytp-ce-element {
+                display: none !important;
+                opacity: 0 !important;
+                visibility: hidden !important;
+              }
+              .video-js {
+                background-color: #000 !important;
+              }
+            `;
+            document.head.appendChild(style);
           }
-        }
-      });
-    } catch (error) {
-      // Expected cross-origin error
-    }
-  };
+        });
 
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
-    const styleId = injectBrandingRemovalCSS();
-    
-    // Try to inject removal script into iframe
-    setTimeout(() => {
-      injectRemovalScript();
-    }, 1000);
-    
-    // Start interval to continuously try to remove YouTube branding
-    intervalRef.current = setInterval(() => {
-      enhancedBrandingRemoval();
-      
-      // Also try to manipulate iframe via postMessage periodically
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        try {
-          iframeRef.current.contentWindow.postMessage({
-            type: 'HIDE_YOUTUBE_ELEMENTS',
-            timestamp: Date.now()
-          }, '*');
-        } catch (e) {
-          // Ignore errors
-        }
+        // Cleanup
+        return () => {
+          if (playerRef.current) {
+            if (playerRef.current._cleanupInterval) {
+              clearInterval(playerRef.current._cleanupInterval);
+            }
+            playerRef.current.dispose();
+            playerRef.current = null;
+          }
+          const style = document.getElementById('youtube-branding-remover');
+          if (style) style.remove();
+        };
+
+      } else {
+        // Setup regular video player for Supabase or direct videos
+        const videoElement = videoRef.current;
+        if (!videoElement) return;
+
+        const player = videojs(videoElement, {
+          controls: true,
+          autoplay: false,
+          preload: 'auto',
+          sources: [{
+            src: videoInfo.url!,
+            type: 'video/mp4'
+          }],
+          controlBar: {
+            children: [
+              'playToggle',
+              'volumePanel',
+              'currentTimeDisplay',
+              'timeDivider',
+              'durationDisplay',
+              'progressControl',
+              'remainingTimeDisplay',
+              'customControlSpacer',
+              'playbackRateMenuButton',
+              'fullscreenToggle'
+            ]
+          }
+        });
+
+        playerRef.current = player;
+
+        // Cleanup
+        return () => {
+          if (playerRef.current) {
+            playerRef.current.dispose();
+            playerRef.current = null;
+          }
+        };
       }
-    }, 500);
-    
-    // Additional cleanup attempts
-    setTimeout(() => {
-      enhancedBrandingRemoval();
-    }, 2000);
-    
-    setTimeout(() => {
-      enhancedBrandingRemoval();
-    }, 5000);
-  };
+    };
 
-  // Prevent context menu and copying
+    const cleanup = setupPlayer();
+
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [videoInfo.url, videoInfo.type]);
+
+  // Handle mouse movement for controls visibility
   useEffect(() => {
-    const preventActions = (e: Event) => {
-      e.preventDefault();
-      return false;
+    const handleMouseMove = () => {
+      setShowControls(true);
+      
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (isPlaying) {
+          setShowControls(false);
+        }
+      }, 3000);
     };
 
     const container = containerRef.current;
     if (container) {
-      container.addEventListener('contextmenu', preventActions);
-      container.addEventListener('copy', preventActions);
-      container.addEventListener('cut', preventActions);
-      container.addEventListener('dragstart', preventActions);
-      container.addEventListener('selectstart', preventActions);
+      container.addEventListener('mousemove', handleMouseMove);
+      container.addEventListener('touchstart', handleMouseMove);
     }
 
-    // Listen for messages from iframe (if it sends any)
-    const handleMessage = (event: MessageEvent) => {
-      // You could handle messages from iframe here if needed
-    };
-    
-    window.addEventListener('message', handleMessage);
-
-    // Cleanup
     return () => {
       if (container) {
-        container.removeEventListener('contextmenu', preventActions);
-        container.removeEventListener('copy', preventActions);
-        container.removeEventListener('cut', preventActions);
-        container.removeEventListener('dragstart', preventActions);
-        container.removeEventListener('selectstart', preventActions);
+        container.removeEventListener('mousemove', handleMouseMove);
+        container.removeEventListener('touchstart', handleMouseMove);
       }
-      
-      window.removeEventListener('message', handleMessage);
-      
-      if (observerRef.current) {
-        observerRef.current.disconnect();
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
       }
-      
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    };
+  }, [isPlaying]);
+
+  // Custom controls handlers
+  const handlePlayPause = () => {
+    if (playerRef.current) {
+      if (playerRef.current.paused()) {
+        playerRef.current.play();
+        setIsPlaying(true);
+      } else {
+        playerRef.current.pause();
+        setIsPlaying(false);
       }
-      
-      // Remove injected CSS
-      const style = document.getElementById('youtube-branding-remover-css-advanced');
-      if (style) {
-        style.remove();
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVolume = parseFloat(e.target.value);
+    setVolume(newVolume);
+    if (playerRef.current) {
+      playerRef.current.volume(newVolume);
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (playerRef.current) {
+      playerRef.current.currentTime(newTime);
+    }
+  };
+
+  const handleFullscreen = () => {
+    if (!containerRef.current) return;
+    
+    if (!isFullscreen) {
+      if (containerRef.current.requestFullscreen) {
+        containerRef.current.requestFullscreen();
+      } else if ((containerRef.current as any).webkitRequestFullscreen) {
+        (containerRef.current as any).webkitRequestFullscreen();
+      } else if ((containerRef.current as any).msRequestFullscreen) {
+        (containerRef.current as any).msRequestFullscreen();
       }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if ((document as any).webkitExitFullscreen) {
+        (document as any).webkitExitFullscreen();
+      } else if ((document as any).msExitFullscreen) {
+        (document as any).msExitFullscreen();
+      }
+    }
+  };
+
+  // Handle fullscreen change
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
     };
   }, []);
 
+  if (!videoInfo.url) {
+    return (
+      <div className="w-full h-64 md:h-96 bg-gray-900 rounded-lg flex flex-col items-center justify-center p-6">
+        <Video className="w-16 h-16 text-gray-500 mb-4" />
+        <p className="text-gray-400 text-lg font-medium">Video not available</p>
+        <p className="text-gray-500 text-sm mt-2">This video cannot be loaded at the moment.</p>
+      </div>
+    );
+  }
+
   return (
-    <div ref={containerRef} className="advanced-youtube-player relative w-full h-full bg-black overflow-hidden">
-      {!isLoaded && (
-        <div className="youtube-player-loading">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-lg">Loading secure video player...</p>
+    <div 
+      ref={containerRef}
+      className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group"
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {/* Video element */}
+      <div data-vjs-player>
+        <video
+          ref={videoRef}
+          className="video-js vjs-default-skin vjs-big-play-centered absolute inset-0 w-full h-full"
+          playsInline
+          preload="metadata"
+          poster={`https://img.youtube.com/vi/${videoInfo.type === 'youtube' ? videoInfo.url : ''}/hqdefault.jpg`}
+          onError={(e) => {
+            console.error('Video loading error:', e);
+          }}
+        />
+      </div>
+
+      {/* Custom overlay with video info */}
+      <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
+        <div className="flex justify-between items-start">
+          <div className="text-white">
+            <h3 className="font-semibold text-lg truncate">{title}</h3>
+            <p className="text-sm text-gray-300">Platform Video Player</p>
+          </div>
+          <div className="text-xs text-gray-400 bg-black/50 px-2 py-1 rounded">
+            {videoInfo.type === 'youtube' ? 'Streaming' : 'Direct Play'}
+          </div>
+        </div>
+      </div>
+
+      {/* Custom controls overlay */}
+      {showControls && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-4 z-10 transition-opacity duration-300">
+          {/* Progress bar */}
+          <div className="mb-3">
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+            />
+          </div>
+
+          {/* Controls bar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={handlePlayPause}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                {isPlaying ? (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
+                </svg>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                />
+              </div>
+
+              <div className="text-white text-sm">
+                {formatTime(currentTime)} / {formatTime(duration)}
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              <button className="text-white hover:text-gray-300 transition-colors">
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM16 3a1 1 0 011 1v7.268a2 2 0 010 3.464V16a1 1 0 11-2 0v-1.268a2 2 0 010-3.464V4a1 1 0 011-1z" />
+                </svg>
+              </button>
+
+              <button
+                onClick={handleFullscreen}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                {isFullscreen ? (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 4a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V5a1 1 0 00-1-1H5zm10 0a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V5a1 1 0 00-1-1h-4zM5 14a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1H5zm10 0a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1v-4a1 1 0 00-1-1h-4z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}
-      
-      <iframe
-        ref={iframeRef}
-        src={getPrivateEmbedUrl()}
-        title={title}
-        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen={false}
-        referrerPolicy="no-referrer"
-        sandbox="allow-same-origin allow-scripts"
-        loading="lazy"
-        onLoad={handleIframeLoad}
-        style={{
-          backgroundColor: '#000',
-          pointerEvents: 'auto',
-        }}
-        scrolling="no"
-        marginWidth="0"
-        marginHeight="0"
-      />
-      
-      {/* Multiple protection layers */}
-      <div className="youtube-protection-layer"></div>
-      
-      {/* Additional transparent overlay for blocking right-click */}
+
+      {/* Loading indicator */}
+      <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="text-white">Loading video player...</p>
+        </div>
+      </div>
+
+      {/* Protection overlay to prevent right-click */}
       <div 
-        className="absolute inset-0 z-[100000] cursor-default"
+        className="absolute inset-0 z-0"
+        onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          toast.error('Right-click is disabled on video player');
           return false;
         }}
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.preventDefault()}
-        style={{ 
-          pointerEvents: 'none',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          MozUserSelect: 'none',
-          msUserSelect: 'none'
-        }}
-      ></div>
-      
-      {/* Fallback message for strict environments */}
-      <div className="absolute bottom-2 right-2 text-xs text-gray-500 opacity-50 z-[100001]">
-        Secure Player Mode
-      </div>
+      />
     </div>
   );
+};
+
+// Helper function to format time
+const formatTime = (seconds: number) => {
+  if (isNaN(seconds)) return "0:00";
+  
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
 const StudentDashboard: React.FC = () => {
@@ -2148,62 +1960,10 @@ const StudentDashboard: React.FC = () => {
 
                                     {activeVideo === video.id && video.video_url && (
                                       <div className="p-4 bg-black">
-                                        <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
-                                          {videoLoading[video.id] ? (
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                              <div className="text-white text-center">
-                                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                                                <p>Loading video...</p>
-                                              </div>
-                                            </div>
-                                          ) : videoErrors[video.id] ? (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-red-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
-                                              <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
-                                            </div>
-                                          ) : videoInfo.url ? (
-                                            <>
-                                              {videoInfo.type === 'youtube' ? (
-                                                <AdvancedYouTubePlayer 
-                                                  videoId={videoInfo.url} 
-                                                  title={video.title}
-                                                />
-                                              ) : (
-                                                <video
-                                                  key={`${video.id}-${Date.now()}`}
-                                                  src={videoInfo.url}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  controls
-                                                  controlsList="nodownload noplaybackrate"
-                                                  playsInline
-                                                  preload="metadata"
-                                                  onError={(e) => {
-                                                    setVideoErrors(prev => ({ 
-                                                      ...prev, 
-                                                      [video.id]: "Failed to load video. Please try again later." 
-                                                    }));
-                                                  }}
-                                                >
-                                                  Your browser does not support the video tag.
-                                                </video>
-                                              )}
-                                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  Platform Video Player
-                                                </p>
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-yellow-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
-                                              <p className="text-gray-300 text-sm">This video is currently unavailable.</p>
-                                            </div>
-                                          )}
-                                        </div>
+                                        <AdvancedVideoPlayer 
+                                          videoInfo={videoInfo}
+                                          title={video.title}
+                                        />
                                       </div>
                                     )}
 
