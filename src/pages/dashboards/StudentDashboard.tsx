@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import {
@@ -241,13 +241,15 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Custom YouTube Player Component that completely hides YouTube
-const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+// Advanced YouTube Player with DOM manipulation
+const AdvancedYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const [isLoaded, setIsLoaded] = useState(false);
-  const containerRef = React.useRef<HTMLDivElement>(null);
-  const iframeRef = React.useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Create the most private embed URL possible
+  // Create the most private embed URL
   const getPrivateEmbedUrl = () => {
     const params = new URLSearchParams({
       'autoplay': '0',
@@ -277,133 +279,182 @@ const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({video
       'end': '0',
       'hl': 'en',
       'cc_lang_pref': 'en',
-      'cc_load_policy': '0',
-      'iv_load_policy': '3',
       'widgetid': '1'
     });
 
     return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
   };
 
-  useEffect(() => {
-    // Add comprehensive CSS to hide all YouTube branding
+  // Function to remove YouTube branding elements
+  const removeYouTubeBranding = () => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+    
+    try {
+      const iframeDoc = iframeRef.current.contentWindow.document;
+      
+      // Remove title and channel name elements
+      const titleElements = iframeDoc.querySelectorAll('.ytp-title-text, .ytp-title-link, .ytp-title-channel, .ytp-title-channel-name, .ytp-title-subtext');
+      titleElements.forEach(el => {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      
+      // Remove YouTube logo and watermark
+      const logoElements = iframeDoc.querySelectorAll('.ytp-logo, .ytp-watermark, .ytp-branding-logo, .ytp-branding-icon, .ytp-branding-name');
+      logoElements.forEach(el => {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      
+      // Remove suggested videos and cards
+      const suggestionElements = iframeDoc.querySelectorAll('.ytp-ce-element, .ytp-cards-button, .ytp-pause-overlay, .ytp-endscreen-content, .html5-endscreen');
+      suggestionElements.forEach(el => {
+        if (el.parentNode) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      
+      // Remove any element containing YouTube text
+      const allElements = iframeDoc.querySelectorAll('*');
+      allElements.forEach(el => {
+        if (el.textContent && el.textContent.toLowerCase().includes('youtube')) {
+          if (el.parentNode) {
+            el.parentNode.removeChild(el);
+          }
+        }
+        
+        // Remove YouTube links
+        if (el.tagName === 'A' && el.getAttribute('href') && 
+            (el.getAttribute('href')?.includes('youtube.com') || 
+             el.getAttribute('href')?.includes('youtu.be'))) {
+          if (el.parentNode) {
+            el.parentNode.removeChild(el);
+          }
+        }
+      });
+      
+      // Remove any element with class containing 'ytp' or 'youtube'
+      const ytElements = iframeDoc.querySelectorAll('[class*="ytp"], [class*="youtube"], [id*="ytp"], [id*="youtube"]');
+      ytElements.forEach(el => {
+        if (el.parentNode && !el.className.includes('html5-video-player')) {
+          el.parentNode.removeChild(el);
+        }
+      });
+      
+    } catch (error) {
+      // Cross-origin restriction, expected
+    }
+  };
+
+  // Use MutationObserver to monitor DOM changes in iframe
+  const setupMutationObserver = () => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+    
+    try {
+      const iframeDoc = iframeRef.current.contentWindow.document;
+      
+      observerRef.current = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'childList' || mutation.type === 'subtree') {
+            removeYouTubeBranding();
+          }
+        });
+      });
+      
+      observerRef.current.observe(iframeDoc.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true
+      });
+      
+    } catch (error) {
+      // Cross-origin restriction
+    }
+  };
+
+  // Inject CSS to hide all YouTube branding
+  const injectBrandingRemovalCSS = () => {
+    const styleId = 'youtube-branding-remover-css';
+    
+    // Remove existing style if any
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    // Create new style
     const style = document.createElement('style');
-    style.id = 'youtube-branding-remover';
+    style.id = styleId;
     style.textContent = `
-      /* Hide ALL YouTube branding elements */
-      .private-youtube-container * {
+      /* Hide ALL YouTube branding automatically */
+      .advanced-youtube-player * {
         -webkit-user-select: none !important;
         -moz-user-select: none !important;
         -ms-user-select: none !important;
         user-select: none !important;
       }
       
-      /* Target YouTube iframe elements */
-      .private-youtube-container iframe {
-        filter: contrast(1.1) brightness(1.05);
-        -webkit-filter: contrast(1.1) brightness(1.05);
+      /* Target YouTube iframe */
+      .advanced-youtube-player iframe {
+        filter: contrast(1.1) brightness(1.05) saturate(1.1);
       }
       
-      /* Hide YouTube logo in multiple ways */
+      /* Force hide all YouTube elements */
+      .ytp-title-text,
+      .ytp-title-link,
+      .ytp-title-channel,
+      .ytp-title-channel-name,
+      .ytp-title-subtext,
       .ytp-logo,
-      .ytp-logo-icon,
-      .ytp-logo-text,
-      .ytp-logo-link,
       .ytp-watermark,
       .ytp-branding-logo,
       .ytp-branding-icon,
       .ytp-branding-name,
-      a[href*="youtube.com"],
-      a[href*="youtu.be"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-        width: 0 !important;
-        height: 0 !important;
-      }
-      
-      /* Hide channel name and title */
-      .ytp-title-channel,
-      .ytp-title-text,
-      .ytp-title,
-      .ytp-title-link,
-      .ytp-title-channel-logo,
-      .ytp-title-expanded-heading,
-      .ytp-title-expanded-title,
-      .ytp-title-expanded-overlay,
-      .ytp-show-cards-title {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-      }
-      
-      /* Hide suggested videos and cards */
       .ytp-ce-element,
-      .ytp-ce-channel,
-      .ytp-ce-playlist,
-      .ytp-ce-video,
-      .ytp-ce-website,
       .ytp-cards-button,
-      .ytp-cards-teaser,
-      .ytp-cards-teaser-box,
-      .ytp-cards-teaser-text,
       .ytp-pause-overlay,
       .ytp-endscreen-content,
-      .html5-endscreen {
+      .html5-endscreen,
+      a[href*="youtube.com"],
+      a[href*="youtu.be"],
+      [class*="ytp"][class*="title"],
+      [class*="ytp"][class*="logo"],
+      [class*="ytp"][class*="branding"],
+      [class*="ytp"][class*="watermark"] {
         display: none !important;
         opacity: 0 !important;
         visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
       }
       
-      /* Hide share and other buttons */
-      .ytp-share-button,
-      .ytp-button[aria-label*="YouTube"],
-      .ytp-button[title*="YouTube"],
-      .ytp-button[aria-label*="youtube"],
-      .ytp-button[title*="youtube"],
-      .ytp-chrome-top-buttons {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-      }
-      
-      /* Hide context menu */
-      .ytp-contextmenu,
-      .ytp-contextmenu-item,
-      .ytp-menuitem,
-      .ytp-popup {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-      }
-      
-      /* Custom overlay for extra protection */
-      .youtube-overlay {
+      /* Custom overlay to block interactions */
+      .youtube-protection-layer {
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 20%, rgba(0,0,0,0) 80%, rgba(0,0,0,0.2) 100%);
+        background: linear-gradient(
+          to bottom,
+          transparent 0%,
+          transparent 20%,
+          transparent 80%,
+          transparent 100%
+        );
         pointer-events: none;
-        z-index: 1000;
+        z-index: 9999;
       }
       
-      /* Prevent any YouTube text from showing */
-      [class*="youtube"],
-      [class*="ytp"],
-      [id*="youtube"],
-      [id*="ytp"],
-      [href*="youtube.com"],
-      [href*="youtu.be"] {
-        color: transparent !important;
-        background: transparent !important;
-        border: none !important;
-      }
-      
-      /* Loading spinner */
-      .youtube-loading {
+      /* Loading overlay */
+      .youtube-player-loading {
         position: absolute;
         top: 0;
         left: 0;
@@ -413,13 +464,35 @@ const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({video
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: 1001;
+        z-index: 10000;
       }
     `;
     
     document.head.appendChild(style);
+  };
 
-    // Prevent right-click and copy
+  const handleIframeLoad = () => {
+    setIsLoaded(true);
+    injectBrandingRemovalCSS();
+    
+    // Start interval to continuously remove YouTube branding
+    intervalRef.current = setInterval(() => {
+      removeYouTubeBranding();
+    }, 100);
+    
+    // Setup mutation observer after a delay
+    setTimeout(() => {
+      setupMutationObserver();
+    }, 1000);
+    
+    // Also try to remove branding immediately
+    setTimeout(() => {
+      removeYouTubeBranding();
+    }, 500);
+  };
+
+  // Prevent context menu and copying
+  useEffect(() => {
     const preventActions = (e: Event) => {
       e.preventDefault();
       return false;
@@ -433,49 +506,8 @@ const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({video
       container.addEventListener('dragstart', preventActions);
     }
 
-    // Try to inject more CSS into the iframe after it loads
-    const timer = setTimeout(() => {
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        try {
-          const iframeDoc = iframeRef.current.contentWindow.document;
-          const iframeStyle = iframeDoc.createElement('style');
-          iframeStyle.textContent = `
-            /* Hide everything YouTube inside iframe */
-            body * {
-              -webkit-user-select: none !important;
-              user-select: none !important;
-            }
-            
-            /* Hide YouTube elements */
-            .ytp-logo,
-            .ytp-watermark,
-            .ytp-title-channel,
-            .ytp-title-text,
-            .ytp-ce-element,
-            .ytp-cards-button,
-            .ytp-share-button,
-            .ytp-contextmenu,
-            .html5-endscreen,
-            [class*="youtube"],
-            [class*="ytp"] {
-              display: none !important;
-              opacity: 0 !important;
-              visibility: hidden !important;
-            }
-          `;
-          iframeDoc.head.appendChild(iframeStyle);
-        } catch (e) {
-          // Cross-origin restriction
-        }
-      }
-    }, 2000);
-
+    // Cleanup
     return () => {
-      const existingStyle = document.getElementById('youtube-branding-remover');
-      if (existingStyle) {
-        existingStyle.remove();
-      }
-      
       if (container) {
         container.removeEventListener('contextmenu', preventActions);
         container.removeEventListener('copy', preventActions);
@@ -483,45 +515,26 @@ const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({video
         container.removeEventListener('dragstart', preventActions);
       }
       
-      clearTimeout(timer);
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+      
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      // Remove injected CSS
+      const style = document.getElementById('youtube-branding-remover-css');
+      if (style) {
+        style.remove();
+      }
     };
   }, []);
 
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
-    
-    // Try to remove YouTube branding from iframe
-    setTimeout(() => {
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        try {
-          const iframeDoc = iframeRef.current.contentWindow.document;
-          
-          // Remove any YouTube logos
-          const logos = iframeDoc.querySelectorAll('[class*="logo"], [class*="watermark"], [class*="branding"]');
-          logos.forEach(logo => {
-            if (logo.parentNode) {
-              logo.parentNode.removeChild(logo);
-            }
-          });
-          
-          // Remove any YouTube text
-          const youtubeText = iframeDoc.querySelectorAll('[class*="youtube"], [class*="ytp"]');
-          youtubeText.forEach(element => {
-            if (element.textContent && element.textContent.toLowerCase().includes('youtube')) {
-              element.textContent = '';
-            }
-          });
-        } catch (e) {
-          // Cross-origin restriction
-        }
-      }
-    }, 1000);
-  };
-
   return (
-    <div ref={containerRef} className="private-youtube-container relative w-full h-full bg-black">
+    <div ref={containerRef} className="advanced-youtube-player relative w-full h-full bg-black">
       {!isLoaded && (
-        <div className="youtube-loading">
+        <div className="youtube-player-loading">
           <div className="text-white text-center">
             <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
             <p className="text-lg">Loading video player...</p>
@@ -546,13 +559,14 @@ const PrivateYouTubePlayer: React.FC<{videoId: string; title: string}> = ({video
         }}
       />
       
-      {/* Protection overlay */}
-      <div className="youtube-overlay"></div>
+      {/* Protection layer */}
+      <div className="youtube-protection-layer"></div>
       
-      {/* Additional protection layer */}
+      {/* Additional protection */}
       <div 
-        className="absolute inset-0 z-50"
+        className="absolute inset-0 z-[10000] cursor-default"
         onContextMenu={(e) => e.preventDefault()}
+        onClick={(e) => e.stopPropagation()}
         style={{ pointerEvents: 'none' }}
       ></div>
     </div>
@@ -1855,7 +1869,7 @@ const StudentDashboard: React.FC = () => {
                                           ) : videoInfo.url ? (
                                             <>
                                               {videoInfo.type === 'youtube' ? (
-                                                <PrivateYouTubePlayer 
+                                                <AdvancedYouTubePlayer 
                                                   videoId={videoInfo.url} 
                                                   title={video.title}
                                                 />
