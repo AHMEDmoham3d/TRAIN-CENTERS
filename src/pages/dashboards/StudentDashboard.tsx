@@ -242,77 +242,49 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Custom Video Player Component using react-player
-const CustomVideoPlayer: React.FC<{
+// Advanced Video Player Component
+const AdvancedVideoPlayer: React.FC<{
   videoInfo: { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' };
   title: string;
 }> = ({ videoInfo, title }) => {
-  const playerRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(0.8);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  const playerRef = useRef<any>(null);
 
-  // CSS to hide YouTube branding
+  // Inject CSS to hide YouTube branding
   useEffect(() => {
-    const hideYouTubeBranding = () => {
-      // Create style to hide YouTube branding
-      const styleId = 'youtube-branding-hider';
-      if (document.getElementById(styleId)) return;
-
+    // Inject custom CSS to hide YouTube branding
+    const styleId = 'youtube-branding-remover';
+    const existingStyle = document.getElementById(styleId);
+    
+    if (!existingStyle) {
       const style = document.createElement('style');
       style.id = styleId;
       style.textContent = `
-        /* Hide ALL YouTube branding elements */
-        .react-player__preview,
-        .ytp-title,
-        .ytp-title-text,
-        .ytp-title-link,
-        .ytp-title-channel,
-        .ytp-title-channel-name,
-        .ytp-title-subtext,
-        .ytp-chrome-top,
-        .ytp-show-cards-title,
-        .ytp-ce-element,
-        .ytp-cards-button,
-        .ytp-pause-overlay,
-        .ytp-endscreen-content,
-        .ytp-suggested-action,
-        .ytp-related-video,
-        .ytp-videowall-still,
-        .ytp-ce-expanding-image,
-        .ytp-ce-channel,
-        .ytp-ce-playlist,
-        .ytp-ce-website,
-        .ytp-ce-video,
-        .ytp-ce-expanding-overlay,
-        .ytp-watermark,
-        .ytp-logo,
-        .ytp-branding-logo,
-        .ytp-branding-icon,
-        .ytp-branding-name,
-        .ytp-branding,
-        .ytp-contextmenu-logo,
-        .yt-uix-button-icon-brand,
-        .ytp-chrome-header,
-        .ytp-button[aria-label*="YouTube"],
-        .ytp-button[title*="YouTube"],
-        .html5-video-player .ytp-branding,
-        .ytp-chrome-controls .ytp-button[aria-label*="YouTube"],
-        a[href*="youtube.com"],
-        a[href*="youtu.be"],
-        .ytp-chrome-bottom .ytp-button[title*="YouTube"],
-        .ytp-pause-overlay .ytp-text-detail,
-        .ytp-ce-text,
-        .ytp-ce-size-1920,
-        .ytp-ce-size-1920 * {
+        /* Hide ALL YouTube branding */
+        .youtube-player-container .ytp-title-text,
+        .youtube-player-container .ytp-title-link,
+        .youtube-player-container .ytp-title-channel,
+        .youtube-player-container .ytp-title-channel-name,
+        .youtube-player-container .ytp-title-subtext,
+        .youtube-player-container .ytp-logo,
+        .youtube-player-container .ytp-watermark,
+        .youtube-player-container .ytp-branding-logo,
+        .youtube-player-container .ytp-branding-icon,
+        .youtube-player-container .ytp-branding-name,
+        .youtube-player-container .ytp-pause-overlay,
+        .youtube-player-container .ytp-ce-element,
+        .youtube-player-container .ytp-cards-button,
+        .youtube-player-container .ytp-endscreen-content,
+        .youtube-player-container .youtube-button,
+        .youtube-player-container [class*="ytp-"][class*="title"],
+        .youtube-player-container [class*="ytp-"][class*="logo"],
+        .youtube-player-container [class*="ytp-"][class*="branding"],
+        .youtube-player-container a[href*="youtube.com"],
+        .youtube-player-container a[href*="youtu.be"] {
           display: none !important;
           opacity: 0 !important;
           visibility: hidden !important;
@@ -324,33 +296,89 @@ const CustomVideoPlayer: React.FC<{
           pointer-events: none !important;
           z-index: -9999 !important;
         }
-
+        
         /* Custom player styling */
-        .custom-video-player .react-player {
-          background-color: #000 !important;
-        }
-
-        .custom-video-player .react-player__shadow {
-          background: transparent !important;
-        }
-
-        .custom-video-player iframe {
-          border: none !important;
+        .youtube-player-container .react-player {
+          border-radius: 8px;
+          overflow: hidden;
           background: #000 !important;
+        }
+        
+        .youtube-player-container .react-player > div {
+          background: #000 !important;
+        }
+        
+        /* Custom overlay */
+        .custom-player-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.3) 100%);
+          pointer-events: none;
+          z-index: 10;
+          border-radius: 8px;
+        }
+        
+        /* Custom title */
+        .custom-video-title {
+          position: absolute;
+          top: 10px;
+          left: 10px;
+          right: 10px;
+          background: rgba(0, 0, 0, 0.7);
+          color: white;
+          padding: 8px 12px;
+          border-radius: 4px;
+          font-size: 14px;
+          font-weight: 500;
+          z-index: 20;
+          pointer-events: none;
+          backdrop-filter: blur(10px);
+        }
+        
+        /* Loading overlay */
+        .loading-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: #000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 30;
+          border-radius: 8px;
+        }
+        
+        /* Error overlay */
+        .error-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.9);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 40;
+          border-radius: 8px;
+          padding: 20px;
+          text-align: center;
         }
       `;
       document.head.appendChild(style);
-    };
-
-    hideYouTubeBranding();
-
-    // Also try to hide branding periodically
-    const interval = setInterval(hideYouTubeBranding, 1000);
+    }
 
     return () => {
-      clearInterval(interval);
-      const style = document.getElementById('youtube-branding-hider');
-      if (style) style.remove();
+      const style = document.getElementById(styleId);
+      if (style) {
+        style.remove();
+      }
     };
   }, []);
 
@@ -364,13 +392,11 @@ const CustomVideoPlayer: React.FC<{
       }
       
       controlsTimeoutRef.current = setTimeout(() => {
-        if (isPlaying) {
-          setShowControls(false);
-        }
+        setShowControls(false);
       }, 3000);
     };
 
-    const container = containerRef.current;
+    const container = document.querySelector('.youtube-player-container');
     if (container) {
       container.addEventListener('mousemove', handleMouseMove);
       container.addEventListener('touchstart', handleMouseMove);
@@ -385,119 +411,133 @@ const CustomVideoPlayer: React.FC<{
         clearTimeout(controlsTimeoutRef.current);
       }
     };
-  }, [isPlaying]);
-
-  // Handle fullscreen
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-    document.addEventListener('msfullscreenchange', handleFullscreenChange);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
-    };
   }, []);
 
-  // Player event handlers
-  const handlePlay = () => setIsPlaying(true);
-  const handlePause = () => setIsPlaying(false);
-  const handleBuffer = () => setIsLoading(true);
-  const handleBufferEnd = () => setIsLoading(false);
-  const handleReady = () => {
-    setIsLoading(false);
-    setPlayerReady(true);
-    if (playerRef.current) {
-      const internalPlayer = playerRef.current.getInternalPlayer();
-      if (internalPlayer) {
-        // Try to hide YouTube branding in the iframe
-        try {
-          const iframe = containerRef.current?.querySelector('iframe');
-          if (iframe) {
-            iframe.style.backgroundColor = '#000';
-            iframe.style.border = 'none';
-          }
-        } catch (error) {
-          // Silently fail if cross-origin
-        }
-      }
+  // YouTube player configuration
+  const youtubeConfig = {
+    playerVars: {
+      // Essential settings to hide branding
+      modestbranding: 1, // Hide YouTube logo
+      rel: 0, // Don't show related videos
+      showinfo: 0, // Hide video title and uploader
+      iv_load_policy: 3, // Hide video annotations
+      controls: 1, // Show player controls
+      disablekb: 1, // Disable keyboard controls
+      fs: 1, // Allow fullscreen
+      playsinline: 1, // Play inline on mobile
+      origin: window.location.origin,
+      // Additional branding removal
+      autohide: 1, // Hide controls when playing
+      cc_load_policy: 0, // Hide captions
+      color: 'white',
+      hl: 'en',
+      // Prevent suggestions
+      widget_referrer: window.location.origin,
+    },
+    embedOptions: {
+      // Additional iframe attributes
+      allow: 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture',
+      allowFullScreen: true,
+      sandbox: 'allow-same-origin allow-scripts allow-popups allow-forms',
+      referrerPolicy: 'no-referrer',
     }
   };
+
+  // Handle player ready
+  const handleReady = () => {
+    setIsLoading(false);
+    
+    // Additional safety: try to remove branding elements after player is ready
+    setTimeout(() => {
+      try {
+        const iframe = document.querySelector('.youtube-player-container iframe');
+        if (iframe) {
+          // Add custom class to iframe for additional CSS targeting
+          iframe.classList.add('youtube-iframe-custom');
+          
+          // Try to inject additional CSS into iframe
+          const iframeDoc = (iframe as HTMLIFrameElement).contentDocument || 
+                           (iframe as HTMLIFrameElement).contentWindow?.document;
+          
+          if (iframeDoc) {
+            const style = iframeDoc.createElement('style');
+            style.textContent = `
+              /* Hide all YouTube branding inside iframe */
+              .ytp-title-text,
+              .ytp-title-link,
+              .ytp-title-channel,
+              .ytp-title-channel-name,
+              .ytp-title-subtext,
+              .ytp-logo,
+              .ytp-watermark,
+              .ytp-branding-logo,
+              .ytp-branding-icon,
+              .ytp-branding-name,
+              .ytp-pause-overlay,
+              .ytp-ce-element,
+              .ytp-cards-button,
+              .ytp-endscreen-content,
+              .youtube-button,
+              [class*="ytp-"][class*="title"],
+              [class*="ytp-"][class*="logo"],
+              [class*="ytp-"][class*="branding"],
+              a[href*="youtube.com"],
+              a[href*="youtu.be"],
+              .ytp-chrome-top .ytp-title,
+              .ytp-show-cards-title {
+                display: none !important;
+                opacity: 0 !important;
+                visibility: hidden !important;
+                width: 0 !important;
+                height: 0 !important;
+                position: absolute !important;
+                left: -9999px !important;
+                top: -9999px !important;
+                pointer-events: none !important;
+                z-index: -9999 !important;
+              }
+              
+              /* Additional branding removal */
+              .ytp-watermark,
+              .ytp-youtube-button {
+                display: none !important;
+              }
+              
+              /* Hide "Watch on YouTube" and channel name */
+              .ytp-title-channel,
+              .ytp-title-channel-name,
+              .ytp-title-expanded,
+              .ytp-title-collapsed {
+                display: none !important;
+              }
+            `;
+            iframeDoc.head.appendChild(style);
+          }
+        }
+      } catch (error) {
+        // Cross-origin restrictions - expected
+        console.log('Cannot access iframe content due to security restrictions');
+      }
+    }, 1000);
+  };
+
+  // Handle player error
   const handleError = (error: any) => {
     console.error('Video player error:', error);
     setHasError(true);
     setIsLoading(false);
   };
-  const handleProgress = (state: { played: number; playedSeconds: number; loaded: number; loadedSeconds: number }) => {
-    setCurrentTime(state.playedSeconds);
-  };
-  const handleDuration = (duration: number) => {
-    setDuration(duration);
-  };
 
-  // Control functions
-  const togglePlay = () => {
+  // Handle play/pause
+  const handlePlayPause = () => {
     if (playerRef.current) {
       if (isPlaying) {
-        playerRef.current.pause();
+        playerRef.current.getInternalPlayer()?.pauseVideo();
       } else {
-        playerRef.current.play();
+        playerRef.current.getInternalPlayer()?.playVideo();
       }
+      setIsPlaying(!isPlaying);
     }
-  };
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if (playerRef.current) {
-      playerRef.current.seekTo(time, 'seconds');
-    }
-  };
-
-  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVolume = parseFloat(e.target.value);
-    setVolume(newVolume);
-    if (playerRef.current) {
-      playerRef.current.getInternalPlayer()?.setVolume?.(newVolume * 100);
-    }
-  };
-
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    
-    if (!isFullscreen) {
-      if (containerRef.current.requestFullscreen) {
-        containerRef.current.requestFullscreen();
-      } else if ((containerRef.current as any).webkitRequestFullscreen) {
-        (containerRef.current as any).webkitRequestFullscreen();
-      }
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen();
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      }
-    }
-  };
-
-  const handleSkip = (seconds: number) => {
-    if (playerRef.current) {
-      playerRef.current.seekTo(currentTime + seconds, 'seconds');
-    }
-  };
-
-  // Format time helper
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds)) return "0:00";
-    
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (!videoInfo.url) {
@@ -510,248 +550,136 @@ const CustomVideoPlayer: React.FC<{
     );
   }
 
-  // Get YouTube URL
-  const getYouTubeUrl = (videoId: string) => {
-    return `https://www.youtube.com/watch?v=${videoId}`;
-  };
-
-  return (
-    <div 
-      ref={containerRef}
-      className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group custom-video-player"
-      onContextMenu={(e) => {
-        e.preventDefault();
-        return false;
-      }}
-    >
-      {/* React Player */}
-      <div className="absolute inset-0">
-        {videoInfo.type === 'youtube' ? (
-          <ReactPlayer
-            ref={playerRef}
-            url={getYouTubeUrl(videoInfo.url)}
-            playing={isPlaying}
-            volume={volume}
-            width="100%"
-            height="100%"
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onBuffer={handleBuffer}
-            onBufferEnd={handleBufferEnd}
-            onReady={handleReady}
-            onError={handleError}
-            onProgress={handleProgress}
-            onDuration={handleDuration}
-            config={{
-              youtube: {
-                playerVars: {
-                  autoplay: 0,
-                  controls: 0, // Hide YouTube controls
-                  disablekb: 1,
-                  fs: 0,
-                  modestbranding: 1,
-                  rel: 0,
-                  showinfo: 0,
-                  iv_load_policy: 3,
-                  cc_load_policy: 0,
-                  enablejsapi: 1,
-                  origin: window.location.origin,
-                  widget_referrer: window.location.origin,
-                  autohide: 1,
-                  color: 'white',
-                  theme: 'dark',
-                  loop: 0,
-                  playsinline: 1,
-                  controlsList: 'nodownload nofullscreen noremoteplayback noplaybackrate',
-                  disablePictureInPicture: 1
-                }
-              }
-            }}
-            style={{
-              backgroundColor: '#000'
-            }}
-          />
-        ) : (
-          <ReactPlayer
-            ref={playerRef}
-            url={videoInfo.url}
-            playing={isPlaying}
-            volume={volume}
-            width="100%"
-            height="100%"
-            onPlay={handlePlay}
-            onPause={handlePause}
-            onBuffer={handleBuffer}
-            onBufferEnd={handleBufferEnd}
-            onReady={handleReady}
-            onError={handleError}
-            onProgress={handleProgress}
-            onDuration={handleDuration}
-            config={{
-              file: {
-                attributes: {
-                  controlsList: 'nodownload',
-                  disablePictureInPicture: true
-                }
-              }
-            }}
-            style={{
-              backgroundColor: '#000'
-            }}
-          />
+  if (videoInfo.type === 'youtube') {
+    return (
+      <div className="youtube-player-container relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden">
+        {/* Loading overlay */}
+        {isLoading && (
+          <div className="loading-overlay">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+              <p className="text-white">Loading video...</p>
+            </div>
+          </div>
         )}
-      </div>
 
+        {/* Error overlay */}
+        {hasError && (
+          <div className="error-overlay">
+            <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+            <p className="text-white text-lg font-medium mb-2">Failed to load video</p>
+            <p className="text-gray-300 text-center">The video could not be loaded. Please try again later.</p>
+          </div>
+        )}
+
+        {/* React Player for YouTube */}
+        <div className="relative w-full h-full">
+          <ReactPlayer
+            ref={playerRef}
+            url={`https://www.youtube.com/watch?v=${videoInfo.url}`}
+            playing={isPlaying}
+            controls={true}
+            width="100%"
+            height="100%"
+            onReady={handleReady}
+            onError={handleError}
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            config={{
+              youtube: youtubeConfig
+            }}
+            style={{
+              borderRadius: '8px',
+              overflow: 'hidden'
+            }}
+          />
+          
+          {/* Custom overlay */}
+          <div className="custom-player-overlay"></div>
+          
+          {/* Custom title */}
+          <div className="custom-video-title">
+            {title}
+          </div>
+        </div>
+
+        {/* Custom play/pause button overlay */}
+        <div 
+          className="absolute inset-0 cursor-pointer"
+          onClick={handlePlayPause}
+          style={{ pointerEvents: showControls ? 'auto' : 'none' }}
+        >
+          {!isPlaying && showControls && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <Play className="w-10 h-10 text-white ml-1" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Protection overlay for right-click */}
+        <div 
+          className="absolute inset-0"
+          onContextMenu={(e) => {
+            e.preventDefault();
+            return false;
+          }}
+        />
+      </div>
+    );
+  }
+
+  // For non-YouTube videos (Supabase/Direct)
+  return (
+    <div className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden">
       {/* Loading overlay */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-10">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white">Loading video player...</p>
+            <p className="text-white">Loading video...</p>
           </div>
         </div>
       )}
 
       {/* Error overlay */}
       {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-10 p-6">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 z-20 p-6">
           <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
           <p className="text-white text-lg font-medium mb-2">Failed to load video</p>
           <p className="text-gray-300 text-center">The video could not be loaded. Please try again later.</p>
         </div>
       )}
 
-      {/* Top info bar */}
-      <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-20">
-        <div className="flex justify-between items-start">
-          <div className="text-white max-w-[70%]">
-            <h3 className="font-semibold text-lg truncate">{title}</h3>
-            <p className="text-sm text-gray-300">Platform Video Player</p>
-          </div>
-          <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
-            {videoInfo.type === 'youtube' ? 'YouTube' : 'Direct Video'}
-          </div>
-        </div>
-      </div>
-
-      {/* Center play button overlay */}
-      {!isPlaying && !isLoading && !hasError && playerReady && (
-        <div 
-          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-20"
-          onClick={togglePlay}
-        >
-          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm hover:bg-white/30 transition-colors">
-            <Play className="w-10 h-10 text-white ml-1" />
-          </div>
-        </div>
-      )}
-
-      {/* Controls overlay */}
-      <div 
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-        onClick={(e) => e.stopPropagation()}
+      {/* Video element for non-YouTube videos */}
+      <video
+        src={videoInfo.url}
+        className="w-full h-full object-contain"
+        controls
+        controlsList="nodownload noplaybackrate"
+        onLoadedData={() => setIsLoading(false)}
+        onError={() => {
+          setHasError(true);
+          setIsLoading(false);
+        }}
+        style={{
+          borderRadius: '8px'
+        }}
       >
-        {/* Progress bar */}
-        <div className="mb-3">
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-          />
-          <div className="flex justify-between text-xs text-gray-300 mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
+        Your browser does not support the video tag.
+      </video>
 
-        {/* Controls bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {/* Play/Pause */}
-            <button
-              onClick={togglePlay}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              {isPlaying ? (
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                </svg>
-              )}
-            </button>
-
-            {/* Volume */}
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z" clipRule="evenodd" />
-              </svg>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={volume}
-                onChange={handleVolumeChange}
-                className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-              />
-            </div>
-
-            {/* Skip buttons */}
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => handleSkip(-10)}
-                className="text-white hover:text-gray-300 text-sm px-2 py-1"
-              >
-                -10s
-              </button>
-              <button
-                onClick={() => handleSkip(10)}
-                className="text-white hover:text-gray-300 text-sm px-2 py-1"
-              >
-                +10s
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            {/* Fullscreen */}
-            <button
-              onClick={toggleFullscreen}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              {isFullscreen ? (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-              )}
-            </button>
-          </div>
-        </div>
+      {/* Custom title for non-YouTube videos */}
+      <div className="absolute top-3 left-3 right-3 bg-black/70 text-white p-2 rounded text-sm font-medium">
+        {title}
       </div>
 
-      {/* Bottom gradient overlay */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none"></div>
-
-      {/* Protection overlay to prevent right-click */}
+      {/* Protection overlay */}
       <div 
-        className="absolute inset-0 z-10"
-        onClick={(e) => e.stopPropagation()}
+        className="absolute inset-0"
         onContextMenu={(e) => {
           e.preventDefault();
-          e.stopPropagation();
-          toast.error('Right-click is disabled on video player');
           return false;
         }}
       />
@@ -2039,7 +1967,7 @@ const StudentDashboard: React.FC = () => {
 
                                     {activeVideo === video.id && video.video_url && (
                                       <div className="p-4 bg-black">
-                                        <CustomVideoPlayer 
+                                        <AdvancedVideoPlayer 
                                           videoInfo={videoInfo}
                                           title={video.title}
                                         />
