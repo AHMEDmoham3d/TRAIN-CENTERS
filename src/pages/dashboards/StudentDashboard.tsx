@@ -227,10 +227,10 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
-    // For YouTube, we need to use a proxy or direct video stream
-    // We'll use a simple approach: show thumbnail and link to YouTube
+    // For YouTube videos, we'll use a direct video stream URL
+    // Note: This may not work for all videos due to YouTube restrictions
     return { 
-      url: `https://www.youtube.com/watch?v=${youtubeId}`, 
+      url: `https://www.youtube.com/embed/${youtubeId}?autoplay=0&controls=1&showinfo=0&rel=0&modestbranding=1`, 
       type: 'youtube' 
     };
   }
@@ -258,35 +258,29 @@ const CustomVideoPlayer: React.FC<{
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [isYouTube, setIsYouTube] = useState(false);
-  const [youtubeId, setYoutubeId] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  const [useYouTubeIframe, setUseYouTubeIframe] = useState(false);
+  const [youtubeId, setYoutubeId] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Extract YouTube ID if it's a YouTube URL
+  // Extract YouTube ID
   useEffect(() => {
-    if (!videoUrl) {
-      setVideoSrc(null);
-      return;
-    }
-
-    const youtubeId = extractYouTubeVideoId(videoUrl);
-    if (youtubeId) {
-      setIsYouTube(true);
-      setYoutubeId(youtubeId);
-      // For YouTube videos, we'll use a different approach
-      setVideoSrc(null);
-    } else {
-      setIsYouTube(false);
-      setYoutubeId(null);
-      setVideoSrc(videoUrl);
+    if (videoUrl) {
+      const id = extractYouTubeVideoId(videoUrl);
+      if (id) {
+        setYoutubeId(id);
+        setUseYouTubeIframe(true);
+      } else {
+        setUseYouTubeIframe(false);
+      }
     }
   }, [videoUrl]);
 
-  // Handle video events
+  // Handle video events for HTML5 video
   useEffect(() => {
+    if (useYouTubeIframe || !videoRef.current || !videoUrl) return;
+
     const videoElement = videoRef.current;
-    if (!videoElement || !videoSrc) return;
 
     const handleLoadedData = () => {
       setIsLoading(false);
@@ -328,7 +322,7 @@ const CustomVideoPlayer: React.FC<{
       videoElement.removeEventListener('error', handleError);
       videoElement.removeEventListener('ended', handleEnded);
     };
-  }, [videoSrc, volume]);
+  }, [videoUrl, volume, useYouTubeIframe]);
 
   // Handle controls visibility
   useEffect(() => {
@@ -378,9 +372,60 @@ const CustomVideoPlayer: React.FC<{
     };
   }, []);
 
-  // Video control functions
+  // Remove YouTube branding from iframe
+  useEffect(() => {
+    if (!useYouTubeIframe || !iframeRef.current) return;
+
+    const removeYouTubeBranding = () => {
+      try {
+        // Create style element to hide YouTube branding
+        const styleId = 'youtube-iframe-hider';
+        let style = document.getElementById(styleId);
+        
+        if (!style) {
+          style = document.createElement('style');
+          style.id = styleId;
+          style.textContent = `
+            .youtube-iframe-container iframe {
+              /* Hide YouTube branding */
+            }
+            .youtube-iframe-container iframe .ytp-title,
+            .youtube-iframe-container iframe .ytp-title-text,
+            .youtube-iframe-container iframe .ytp-title-channel,
+            .youtube-iframe-container iframe .ytp-logo,
+            .youtube-iframe-container iframe .ytp-watermark,
+            .youtube-iframe-container iframe .ytp-branding,
+            .youtube-iframe-container iframe .ytp-pause-overlay,
+            .youtube-iframe-container iframe .ytp-ce-element {
+              display: none !important;
+              opacity: 0 !important;
+              visibility: hidden !important;
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      } catch (error) {
+        // Ignore cross-origin errors
+      }
+    };
+
+    // Try to remove branding after iframe loads
+    const iframe = iframeRef.current;
+    const handleLoad = () => {
+      setIsLoading(false);
+      removeYouTubeBranding();
+    };
+
+    iframe.addEventListener('load', handleLoad);
+
+    return () => {
+      iframe.removeEventListener('load', handleLoad);
+    };
+  }, [useYouTubeIframe]);
+
+  // Video control functions for HTML5 video
   const togglePlay = () => {
-    if (!videoRef.current || !videoSrc) return;
+    if (!videoRef.current || useYouTubeIframe) return;
     
     if (videoRef.current.paused) {
       videoRef.current.play();
@@ -390,7 +435,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current || !videoSrc) return;
+    if (!videoRef.current || useYouTubeIframe) return;
     
     const time = parseFloat(e.target.value);
     videoRef.current.currentTime = time;
@@ -398,7 +443,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current || !videoSrc) return;
+    if (!videoRef.current || useYouTubeIframe) return;
     
     const newVolume = parseFloat(e.target.value);
     videoRef.current.volume = newVolume;
@@ -424,7 +469,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleSkip = (seconds: number) => {
-    if (!videoRef.current || !videoSrc) return;
+    if (!videoRef.current || useYouTubeIframe) return;
     
     videoRef.current.currentTime += seconds;
   };
@@ -438,11 +483,44 @@ const CustomVideoPlayer: React.FC<{
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Handle YouTube video - show thumbnail with play button that opens in new tab
-  const handleYouTubePlay = () => {
-    if (youtubeId) {
-      window.open(`https://www.youtube.com/watch?v=${youtubeId}`, '_blank');
-    }
+  // Get YouTube embed URL with minimal branding
+  const getYouTubeEmbedUrl = () => {
+    if (!youtubeId) return '';
+    
+    const params = new URLSearchParams({
+      autoplay: '0',
+      controls: '1',
+      disablekb: '1',
+      fs: '0',
+      modestbranding: '1',
+      rel: '0',
+      showinfo: '0',
+      iv_load_policy: '3',
+      cc_load_policy: '0',
+      enablejsapi: '0',
+      origin: window.location.origin,
+      widget_referrer: window.location.origin,
+      autohide: '1',
+      color: 'white',
+      theme: 'dark',
+      loop: '0',
+      playsinline: '1',
+      controlsList: 'nodownload nofullscreen noremoteplayback noplaybackrate',
+      disablePictureInPicture: '1',
+      playsInline: '1',
+      preload: 'none',
+      mute: '0',
+      start: '0',
+      end: '0',
+      hl: 'en',
+      cc_lang_pref: 'en',
+      widgetid: '1',
+      wmode: 'opaque',
+      enablecastapi: '0',
+      nocookie: '1'
+    });
+
+    return `https://www.youtube-nocookie.com/embed/${youtubeId}?${params.toString()}`;
   };
 
   if (!videoUrl) {
@@ -455,241 +533,210 @@ const CustomVideoPlayer: React.FC<{
     );
   }
 
-  if (isYouTube && youtubeId) {
-    return (
-      <div 
-        ref={containerRef}
-        className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group"
-        onContextMenu={(e) => {
-          e.preventDefault();
-          return false;
-        }}
-      >
-        {/* YouTube thumbnail with play overlay */}
-        <div className="absolute inset-0 bg-gray-900">
-          <img
-            src={`https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`}
-            alt={title}
-            className="w-full h-full object-cover opacity-80"
-            onError={(e) => {
-              e.currentTarget.src = `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
-            }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent"></div>
-        </div>
-
-        {/* YouTube play button overlay */}
-        <div 
-          className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 cursor-pointer"
-          onClick={handleYouTubePlay}
-        >
-          <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors">
-            <Play className="w-12 h-12 text-white ml-2" />
-          </div>
-          <p className="text-white text-lg font-medium mt-4">Click to play on YouTube</p>
-          <p className="text-gray-300 text-sm mt-2">Video will open in new tab</p>
-        </div>
-
-        {/* Top info bar */}
-        <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
-          <div className="flex justify-between items-start">
-            <div className="text-white max-w-[70%]">
-              <h3 className="font-semibold text-lg truncate">{title}</h3>
-              <p className="text-sm text-gray-300">YouTube Video</p>
-            </div>
-            <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
-              External Player
-            </div>
-          </div>
-        </div>
-
-        {/* Protection overlay */}
-        <div 
-          className="absolute inset-0 z-0"
-          onClick={(e) => e.stopPropagation()}
-          onContextMenu={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
     <div 
       ref={containerRef}
-      className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group"
+      className="relative w-full h-64 md:h-96 bg-black rounded-lg overflow-hidden group youtube-iframe-container"
       onContextMenu={(e) => {
         e.preventDefault();
         return false;
       }}
     >
-      {/* Video element for non-YouTube videos */}
-      {videoSrc && (
-        <video
-          ref={videoRef}
-          src={videoSrc}
-          className="absolute inset-0 w-full h-full object-contain bg-black"
-          controls={false}
-          playsInline
-          preload="metadata"
-          onClick={togglePlay}
-        />
-      )}
-
       {/* Loading overlay */}
-      {isLoading && videoSrc && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white">Loading video...</p>
+            <p className="text-white">Loading video player...</p>
           </div>
         </div>
       )}
 
-      {/* Error overlay */}
-      {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6">
-          <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-          <p className="text-white text-lg font-medium mb-2">Failed to load video</p>
-          <p className="text-gray-300 text-center">The video could not be loaded. Please try again later.</p>
-        </div>
+      {/* YouTube iframe for YouTube videos */}
+      {useYouTubeIframe && youtubeId && (
+        <>
+          <iframe
+            ref={iframeRef}
+            src={getYouTubeEmbedUrl()}
+            title={title}
+            className="absolute inset-0 w-full h-full"
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen={false}
+            referrerPolicy="no-referrer"
+            sandbox="allow-same-origin allow-scripts"
+            loading="lazy"
+            onLoad={() => setIsLoading(false)}
+          />
+          
+          {/* Custom overlay to hide YouTube elements */}
+          <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-black/70 to-transparent z-10"></div>
+          <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/70 to-transparent z-10"></div>
+          <div className="absolute left-0 top-16 bottom-24 w-16 bg-gradient-to-r from-black/50 to-transparent z-10"></div>
+          <div className="absolute right-0 top-16 bottom-24 w-16 bg-gradient-to-l from-black/50 to-transparent z-10"></div>
+          
+          {/* Custom title overlay */}
+          <div className="absolute top-4 left-4 right-4 z-20">
+            <div className="text-white bg-black/50 backdrop-blur-sm rounded-lg p-3">
+              <h3 className="font-semibold text-lg truncate">{title}</h3>
+              <p className="text-sm text-gray-300">Platform Video Player</p>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Top info bar */}
-      <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
-        <div className="flex justify-between items-start">
-          <div className="text-white max-w-[70%]">
-            <h3 className="font-semibold text-lg truncate">{title}</h3>
-            <p className="text-sm text-gray-300">Platform Video Player</p>
-          </div>
-          <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
-            {videoSrc ? `${formatTime(currentTime)} / ${formatTime(duration)}` : 'Ready'}
-          </div>
-        </div>
-      </div>
+      {/* HTML5 video player for non-YouTube videos */}
+      {!useYouTubeIframe && videoUrl && (
+        <>
+          <video
+            ref={videoRef}
+            src={videoUrl}
+            className="absolute inset-0 w-full h-full object-contain bg-black"
+            controls={false}
+            playsInline
+            preload="metadata"
+            onClick={togglePlay}
+          />
 
-      {/* Center play button overlay for non-YouTube videos */}
-      {!isPlaying && !isLoading && !hasError && videoSrc && (
-        <div 
-          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
-          onClick={togglePlay}
-        >
-          <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
-            <Play className="w-10 h-10 text-white ml-1" />
-          </div>
-        </div>
-      )}
+          {/* Error overlay */}
+          {hasError && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6 z-20">
+              <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+              <p className="text-white text-lg font-medium mb-2">Failed to load video</p>
+              <p className="text-gray-300 text-center">The video could not be loaded. Please try again later.</p>
+            </div>
+          )}
 
-      {/* Controls overlay for non-YouTube videos */}
-      {videoSrc && (
-        <div 
-          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 ${
-            showControls ? 'opacity-100' : 'opacity-0'
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Progress bar */}
-          <div className="mb-3">
-            <input
-              type="range"
-              min="0"
-              max={duration || 100}
-              value={currentTime}
-              onChange={handleSeek}
-              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-            />
-            <div className="flex justify-between text-xs text-gray-300 mt-1">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
+          {/* Top info bar */}
+          <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
+            <div className="flex justify-between items-start">
+              <div className="text-white max-w-[70%]">
+                <h3 className="font-semibold text-lg truncate">{title}</h3>
+                <p className="text-sm text-gray-300">Platform Video Player</p>
+              </div>
+              <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
+                {videoUrl ? `${formatTime(currentTime)} / ${formatTime(duration)}` : 'Ready'}
+              </div>
             </div>
           </div>
 
-          {/* Controls bar */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              {/* Play/Pause */}
-              <button
-                onClick={togglePlay}
-                className="text-white hover:text-gray-300 transition-colors"
-              >
-                {isPlaying ? (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                  </svg>
-                ) : (
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
-
-              {/* Volume */}
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
-                </svg>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-                />
+          {/* Center play button overlay */}
+          {!isPlaying && !isLoading && !hasError && (
+            <div 
+              className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-10"
+              onClick={togglePlay}
+            >
+              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <Play className="w-10 h-10 text-white ml-1" />
               </div>
+            </div>
+          )}
 
-              {/* Skip buttons */}
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => handleSkip(-10)}
-                  className="text-white hover:text-gray-300 text-sm px-2 py-1"
-                >
-                  -10s
-                </button>
-                <button
-                  onClick={() => handleSkip(10)}
-                  className="text-white hover:text-gray-300 text-sm px-2 py-1"
-                >
-                  +10s
-                </button>
+          {/* Controls overlay */}
+          <div 
+            className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 z-10 ${
+              showControls ? 'opacity-100' : 'opacity-0'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Progress bar */}
+            <div className="mb-3">
+              <input
+                type="range"
+                min="0"
+                max={duration || 100}
+                value={currentTime}
+                onChange={handleSeek}
+                className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+              />
+              <div className="flex justify-between text-xs text-gray-300 mt-1">
+                <span>{formatTime(currentTime)}</span>
+                <span>{formatTime(duration)}</span>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
-              {/* Fullscreen */}
-              <button
-                onClick={toggleFullscreen}
-                className="text-white hover:text-gray-300 transition-colors"
-              >
-                {isFullscreen ? (
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+            {/* Controls bar */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {/* Play/Pause */}
+                <button
+                  onClick={togglePlay}
+                  className="text-white hover:text-gray-300 transition-colors"
+                >
+                  {isPlaying ? (
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+
+                {/* Volume */}
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828a1 1 0 010-1.415z" clipRule="evenodd" />
                   </svg>
-                ) : (
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-                  </svg>
-                )}
-              </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.1"
+                    value={volume}
+                    onChange={handleVolumeChange}
+                    className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                  />
+                </div>
+
+                {/* Skip buttons */}
+                <div className="flex items-center space-x-1">
+                  <button
+                    onClick={() => handleSkip(-10)}
+                    className="text-white hover:text-gray-300 text-sm px-2 py-1"
+                  >
+                    -10s
+                  </button>
+                  <button
+                    onClick={() => handleSkip(10)}
+                    className="text-white hover:text-gray-300 text-sm px-2 py-1"
+                  >
+                    +10s
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-3">
+                {/* Fullscreen */}
+                <button
+                  onClick={toggleFullscreen}
+                  className="text-white hover:text-gray-300 transition-colors"
+                >
+                  {isFullscreen ? (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
-      {/* Bottom gradient overlay */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none"></div>
-
-      {/* Protection overlay */}
+      {/* Protection overlay for both types */}
       <div 
         className="absolute inset-0 z-0"
         onClick={(e) => e.stopPropagation()}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          toast.error('Right-click is disabled on video player');
           return false;
         }}
       />
