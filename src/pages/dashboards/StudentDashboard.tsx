@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import {
@@ -163,6 +163,26 @@ interface ExamResult {
   };
 }
 
+// Function to extract YouTube Video ID
+const extractYouTubeVideoId = (url: string | null): string | null => {
+  if (!url) return null;
+  
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+    /youtube\.com\/v\/([^&\n?#]+)/,
+    /youtube\.com\/watch\?.*v=([^&\n?#]+)/
+  ];
+  
+  for (const pattern of patterns) {
+    const match = url.match(pattern);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+  
+  return null;
+};
+
 // Function to get public URL from Supabase Storage
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
@@ -202,20 +222,650 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
 };
 
 // Function to get proper video URL based on source
-const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'supabase' | 'direct' | 'unsupported' } => {
-  if (!videoUrl) return { url: null, type: 'unsupported' };
-
-  // Check if it's a YouTube or related URL - not supported
-  if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be') || videoUrl.includes('googlevideo.com')) {
-    return { url: null, type: 'unsupported' };
+const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
+  if (!videoUrl) return { url: null, type: 'unknown' };
+  
+  const youtubeId = extractYouTubeVideoId(videoUrl);
+  if (youtubeId) {
+    return { 
+      url: youtubeId, 
+      type: 'youtube' 
+    };
   }
-
+  
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return { url: videoUrl, type: 'direct' };
   }
-
+  
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   return { url: supabaseUrl, type: 'supabase' };
+};
+
+// Advanced YouTube Player with enhanced DOM manipulation
+const AdvancedYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const observerRef = useRef<MutationObserver | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scriptInjectionRef = useRef<boolean>(false);
+
+  // Create the most private embed URL with maximum restrictions
+  const getPrivateEmbedUrl = () => {
+    const params = new URLSearchParams({
+      'autoplay': '0',
+      'controls': '1',
+      'disablekb': '1',
+      'fs': '0',
+      'modestbranding': '1',
+      'rel': '0',
+      'showinfo': '0',
+      'iv_load_policy': '3',
+      'cc_load_policy': '0',
+      'enablejsapi': '0',
+      'origin': window.location.origin,
+      'widget_referrer': window.location.origin,
+      'autohide': '1',
+      'color': 'white',
+      'theme': 'dark',
+      'loop': '0',
+      'playsinline': '1',
+      'controlsList': 'nodownload nofullscreen noremoteplayback noplaybackrate',
+      'disablePictureInPicture': '1',
+      'playsInline': '1',
+      'preload': 'none',
+      'mute': '0',
+      'playlist': videoId,
+      'start': '0',
+      'end': '0',
+      'hl': 'en',
+      'cc_lang_pref': 'en',
+      'widgetid': '1',
+      'wmode': 'opaque',
+      'enablecastapi': '0',
+      'nocookie': '1'
+    });
+
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+  };
+
+  // Function to inject removal script into iframe
+  const injectRemovalScript = () => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow || scriptInjectionRef.current) return;
+    
+    try {
+      const iframeDoc = iframeRef.current.contentWindow.document;
+      
+      // Create script to remove YouTube elements
+      const removalScript = `
+        // Function to remove YouTube branding
+        function removeYouTubeBranding() {
+          // Remove title elements
+          const titleSelectors = [
+            '.ytp-title-text',
+            '.ytp-title-link',
+            '.ytp-title-channel',
+            '.ytp-title-channel-name',
+            '.ytp-title-subtext',
+            '.ytp-title-expanded',
+            '.ytp-title-collapsed',
+            '[class*="title"][class*="ytp"]',
+            '.ytp-chrome-top',
+            '.ytp-show-cards-title'
+          ];
+          
+          titleSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            });
+          });
+          
+          // Remove logo and watermark
+          const logoSelectors = [
+            '.ytp-logo',
+            '.ytp-watermark',
+            '.ytp-branding-logo',
+            '.ytp-branding-icon',
+            '.ytp-branding-name',
+            '.ytp-branding',
+            '.ytp-contextmenu-logo',
+            '.yt-uix-button-icon-brand',
+            '.ytp-chrome-header',
+            '.ytp-chrome-controls .ytp-button[aria-label*="YouTube"]'
+          ];
+          
+          logoSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            });
+          });
+          
+          // Remove suggested videos and cards
+          const suggestionSelectors = [
+            '.ytp-ce-element',
+            '.ytp-cards-button',
+            '.ytp-pause-overlay',
+            '.ytp-endscreen-content',
+            '.html5-endscreen',
+            '.ytp-suggested-action',
+            '.ytp-related-video',
+            '.ytp-videowall-still',
+            '.ytp-ce-expanding-image',
+            '.ytp-ce-channel',
+            '.ytp-ce-playlist',
+            '.ytp-ce-website',
+            '.ytp-ce-video',
+            '.ytp-ce-expanding-overlay'
+          ];
+          
+          suggestionSelectors.forEach(selector => {
+            const elements = document.querySelectorAll(selector);
+            elements.forEach(el => {
+              if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            });
+          });
+          
+          // Remove any element containing YouTube text
+          const allElements = document.querySelectorAll('*');
+          allElements.forEach(el => {
+            if (el.textContent && (
+              el.textContent.toLowerCase().includes('youtube') ||
+              el.textContent.toLowerCase().includes('you tube') ||
+              el.textContent.toLowerCase().includes('yt-be')
+            )) {
+              if (el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            }
+            
+            // Remove YouTube links
+            if (el.tagName === 'A' && el.getAttribute('href')) {
+              const href = el.getAttribute('href') || '';
+              if (href.includes('youtube.com') || href.includes('youtu.be')) {
+                if (el.parentNode) {
+                  el.parentNode.removeChild(el);
+                }
+              }
+            }
+          });
+          
+          // Remove specific YouTube-related attributes and classes
+          const ytElements = document.querySelectorAll('[class*="ytp"], [class*="youtube"], [id*="ytp"], [id*="youtube"]');
+          ytElements.forEach(el => {
+            if (el.parentNode) {
+              const className = el.className || '';
+              if (!className.includes('html5-video-player') && 
+                  !className.includes('html5-main-video')) {
+                el.parentNode.removeChild(el);
+              }
+            }
+          });
+        }
+        
+        // Run removal on load and periodically
+        removeYouTubeBranding();
+        setInterval(removeYouTubeBranding, 1000);
+        
+        // Monitor DOM changes
+        const observer = new MutationObserver(function(mutations) {
+          mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || mutation.type === 'subtree') {
+              removeYouTubeBranding();
+            }
+          });
+        });
+        
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          characterData: true
+        });
+        
+        // Also remove on various events
+        ['load', 'DOMContentLoaded', 'click', 'mouseover', 'keydown'].forEach(event => {
+          window.addEventListener(event, removeYouTubeBranding, true);
+        });
+      `;
+      
+      // Create and inject the script
+      const script = iframeDoc.createElement('script');
+      script.textContent = removalScript;
+      iframeDoc.head.appendChild(script);
+      
+      scriptInjectionRef.current = true;
+      
+    } catch (error) {
+      // Cross-origin restriction - we'll use CSS approach instead
+    }
+  };
+
+  // Inject CSS to hide all YouTube branding
+  const injectBrandingRemovalCSS = () => {
+    const styleId = 'youtube-branding-remover-css-advanced';
+    
+    // Remove existing style if any
+    const existingStyle = document.getElementById(styleId);
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
+    // Create new style with comprehensive selectors
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      /* Hide ALL YouTube branding automatically - EXTENSIVE LIST */
+      .advanced-youtube-player iframe {
+        filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
+        -webkit-filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
+      }
+      
+      /* Target YouTube player container */
+      .advanced-youtube-player * {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+      }
+      
+      /* COMPREHENSIVE YOUTUBE ELEMENT HIDING */
+      /* Title and channel elements */
+      .ytp-title-text,
+      .ytp-title-link,
+      .ytp-title-channel,
+      .ytp-title-channel-name,
+      .ytp-title-subtext,
+      .ytp-title-expanded,
+      .ytp-title-collapsed,
+      .ytp-chrome-top .ytp-title,
+      [class*="title"][class*="ytp"],
+      .ytp-show-cards-title,
+      .ytp-ce-title,
+      .ytp-ce-channel-title,
+      .ytp-ce-playlist-title {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* Logo, watermark and branding */
+      .ytp-logo,
+      .ytp-watermark,
+      .ytp-branding-logo,
+      .ytp-branding-icon,
+      .ytp-branding-name,
+      .ytp-branding,
+      .ytp-contextmenu-logo,
+      .yt-uix-button-icon-brand,
+      .ytp-chrome-header,
+      .ytp-button[aria-label*="YouTube"],
+      .ytp-button[title*="YouTube"],
+      .html5-video-player .ytp-branding,
+      .ytp-chrome-controls .ytp-button[aria-label*="YouTube"] {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* Suggested videos, cards, and related content */
+      .ytp-ce-element,
+      .ytp-cards-button,
+      .ytp-pause-overlay,
+      .ytp-endscreen-content,
+      .html5-endscreen,
+      .ytp-suggested-action,
+      .ytp-related-video,
+      .ytp-videowall-still,
+      .ytp-ce-expanding-image,
+      .ytp-ce-channel,
+      .ytp-ce-playlist,
+      .ytp-ce-website,
+      .ytp-ce-video,
+      .ytp-ce-expanding-overlay,
+      .ytp-ce-text,
+      .ytp-ce-size-1920,
+      .ytp-ce-size-1920 * {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* Any element containing YouTube text */
+      *:contains("YouTube"),
+      *:contains("you tube"),
+      *:contains("YT"),
+      *:contains("Youtube"),
+      *:contains("YOU TUBE") {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* YouTube links */
+      a[href*="youtube.com"],
+      a[href*="youtu.be"],
+      a[href*="youtube-nocookie.com"] {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* Classes and IDs containing ytp or youtube */
+      [class*="ytp"][class*="title"],
+      [class*="ytp"][class*="logo"],
+      [class*="ytp"][class*="branding"],
+      [class*="ytp"][class*="watermark"],
+      [class*="ytp"][class*="channel"],
+      [class*="youtube"][class*="logo"],
+      [class*="youtube"][class*="brand"],
+      [id*="ytp"],
+      [id*="youtube"] {
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+        top: -9999px !important;
+        pointer-events: none !important;
+        z-index: -9999 !important;
+      }
+      
+      /* Additional YouTube UI elements */
+      .ytp-chrome-bottom,
+      .ytp-gradient-bottom,
+      .ytp-chrome-controls .ytp-right-controls,
+      .ytp-chrome-controls .ytp-left-controls,
+      .ytp-panel,
+      .ytp-popup,
+      .ytp-tooltip,
+      .ytp-menubar,
+      .ytp-settings-button,
+      .ytp-subtitles-button {
+        /* Keep controls but remove branding from them */
+      }
+      
+      /* Custom overlay to block interactions with hidden elements */
+      .youtube-protection-layer {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          to bottom,
+          transparent 0%,
+          transparent 20%,
+          transparent 80%,
+          transparent 100%
+        );
+        pointer-events: none;
+        z-index: 99999;
+        mix-blend-mode: multiply;
+      }
+      
+      /* Force iframe styling */
+      .advanced-youtube-player iframe {
+        isolation: isolate;
+        contain: strict;
+      }
+      
+      /* Loading overlay */
+      .youtube-player-loading {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: #000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100000;
+      }
+    `;
+    
+    document.head.appendChild(style);
+    return styleId;
+  };
+
+  // Enhanced removal function using postMessage
+  const enhancedBrandingRemoval = () => {
+    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
+    
+    // Try to inject script via postMessage (if iframe allows)
+    try {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'REMOVE_YOUTUBE_BRANDING',
+        selectors: [
+          '.ytp-title',
+          '.ytp-title-text',
+          '.ytp-title-link',
+          '.ytp-title-channel',
+          '.ytp-logo',
+          '.ytp-watermark',
+          '.ytp-branding',
+          '.ytp-pause-overlay',
+          '.ytp-ce-element'
+        ]
+      }, '*');
+    } catch (error) {
+      // Silently fail if postMessage not allowed
+    }
+    
+    // Also try direct DOM manipulation (will fail on cross-origin, but try anyway)
+    try {
+      const iframeDoc = iframeRef.current.contentWindow.document;
+      
+      // This will throw cross-origin error, but we try anyway
+      const elements = iframeDoc.querySelectorAll('*');
+      elements.forEach(el => {
+        if (el.textContent && el.textContent.match(/youtube/i)) {
+          try {
+            if (el.parentNode) {
+              el.parentNode.removeChild(el);
+            }
+          } catch (e) {
+            // Cross-origin error expected
+          }
+        }
+      });
+    } catch (error) {
+      // Expected cross-origin error
+    }
+  };
+
+  const handleIframeLoad = () => {
+    setIsLoaded(true);
+    const styleId = injectBrandingRemovalCSS();
+    
+    // Try to inject removal script into iframe
+    setTimeout(() => {
+      injectRemovalScript();
+    }, 1000);
+    
+    // Start interval to continuously try to remove YouTube branding
+    intervalRef.current = setInterval(() => {
+      enhancedBrandingRemoval();
+      
+      // Also try to manipulate iframe via postMessage periodically
+      if (iframeRef.current && iframeRef.current.contentWindow) {
+        try {
+          iframeRef.current.contentWindow.postMessage({
+            type: 'HIDE_YOUTUBE_ELEMENTS',
+            timestamp: Date.now()
+          }, '*');
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    }, 500);
+    
+    // Additional cleanup attempts
+    setTimeout(() => {
+      enhancedBrandingRemoval();
+    }, 2000);
+    
+    setTimeout(() => {
+      enhancedBrandingRemoval();
+    }, 5000);
+  };
+
+  // Prevent context menu and copying
+  useEffect(() => {
+    const preventActions = (e: Event) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('contextmenu', preventActions);
+      container.addEventListener('copy', preventActions);
+      container.addEventListener('cut', preventActions);
+      container.addEventListener('dragstart', preventActions);
+      container.addEventListener('selectstart', preventActions);
+    }
+
+    // Listen for messages from iframe (if it sends any)
+    const handleMessage = (event: MessageEvent) => {
+      // You could handle messages from iframe here if needed
+    };
+    
+    window.addEventListener('message', handleMessage);
+
+    // Cleanup
+    return () => {
+      if (container) {
+        container.removeEventListener('contextmenu', preventActions);
+        container.removeEventListener('copy', preventActions);
+        container.removeEventListener('cut', preventActions);
+        container.removeEventListener('dragstart', preventActions);
+        container.removeEventListener('selectstart', preventActions);
+      }
+      
+      window.removeEventListener('message', handleMessage);
+      
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+      
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      // Remove injected CSS
+      const style = document.getElementById('youtube-branding-remover-css-advanced');
+      if (style) {
+        style.remove();
+      }
+    };
+  }, []);
+
+  return (
+    <div ref={containerRef} className="advanced-youtube-player relative w-full h-full bg-black overflow-hidden">
+      {!isLoaded && (
+        <div className="youtube-player-loading">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-lg">Loading secure video player...</p>
+          </div>
+        </div>
+      )}
+      
+      <iframe
+        ref={iframeRef}
+        src={getPrivateEmbedUrl()}
+        title={title}
+        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        frameBorder="0"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen={false}
+        referrerPolicy="no-referrer"
+        sandbox="allow-same-origin allow-scripts"
+        loading="lazy"
+        onLoad={handleIframeLoad}
+        style={{
+          backgroundColor: '#000',
+          pointerEvents: 'auto',
+        }}
+        scrolling="no"
+        marginWidth="0"
+        marginHeight="0"
+      />
+      
+      {/* Multiple protection layers */}
+      <div className="youtube-protection-layer"></div>
+      
+      {/* Additional transparent overlay for blocking right-click */}
+      <div 
+        className="absolute inset-0 z-[100000] cursor-default"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.preventDefault()}
+        style={{ 
+          pointerEvents: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none'
+        }}
+      ></div>
+      
+      {/* Fallback message for strict environments */}
+      <div className="absolute bottom-2 right-2 text-xs text-gray-500 opacity-50 z-[100001]">
+        Secure Player Mode
+      </div>
+    </div>
+  );
 };
 
 const StudentDashboard: React.FC = () => {
@@ -315,12 +965,7 @@ const StudentDashboard: React.FC = () => {
           if (!groupedResults[result.exam_id]) {
             groupedResults[result.exam_id] = [];
           }
-          // Ensure exam is a single object, not array
-          const examResult: ExamResult = {
-            ...result,
-            exam: Array.isArray(result.exam) ? result.exam[0] : result.exam
-          };
-          groupedResults[result.exam_id].push(examResult);
+          groupedResults[result.exam_id].push(result);
         });
 
         setExamResults(groupedResults);
@@ -641,7 +1286,7 @@ const StudentDashboard: React.FC = () => {
     return "active";
   };
 
-  const formatDate = (d: string | null | undefined) => {
+  const formatDate = (d?: string | null) => {
     if (!d) return "-";
     try {
       return new Date(d).toLocaleDateString();
@@ -650,7 +1295,7 @@ const StudentDashboard: React.FC = () => {
     }
   };
 
-  const formatDateTime = (d: string | null | undefined) => {
+  const formatDateTime = (d?: string | null) => {
     if (!d) return "-";
     try {
       return new Date(d).toLocaleString();
@@ -848,16 +1493,16 @@ const StudentDashboard: React.FC = () => {
     toast.success("Exam cancelled");
   };
 
-  const handleShowExamResults = (examId: string, examTitle: string, teacherName: string, subject: string | null | undefined) => {
+  const handleShowExamResults = (examId: string, examTitle: string, teacherName: string, subject: string = "") => {
     const results = examResults[examId] || [];
     setSelectedExamResults(results);
     setSelectedExamTitle(examTitle);
     setSelectedTeacherName(teacherName);
-    setSelectedSubject(subject || "");
+    setSelectedSubject(subject);
     setShowExamResultsModal(true);
   };
 
-  const handleDownloadMaterial = (fileUrl: string | null | undefined, title: string) => {
+  const handleDownloadMaterial = (fileUrl: string | null, title: string) => {
     if (!fileUrl) {
       toast.error("No file available for download");
       return;
@@ -1224,6 +1869,7 @@ const StudentDashboard: React.FC = () => {
                             </th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                               Status
+                            </th>
                           </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
@@ -1305,7 +1951,7 @@ const StudentDashboard: React.FC = () => {
                     setSelectedSubject("");
                     setShowExamResultsModal(true);
                   } else {
-                    toast("You haven't taken any exams yet");
+                    toast.info("You haven't taken any exams yet");
                   }
                 }}
                 className="flex items-center text-sm bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
@@ -1485,7 +2131,7 @@ const StudentDashboard: React.FC = () => {
                                         <div className="flex items-center space-x-3">
                                           <Play className="w-5 h-5 text-primary-600" />
                                           <div>
-                                            <h5 className="font-semibold text-gray-900">{video.title || 'Video'}</h5>
+                                            <h5 className="font-semibold text-gray-900">{video.title}</h5>
                                             {video.description && (
                                               <p className="text-sm text-gray-600 mt-1">{video.description}</p>
                                             )}
@@ -1518,30 +2164,36 @@ const StudentDashboard: React.FC = () => {
                                             </div>
                                           ) : videoInfo.url ? (
                                             <>
-                                              <video
-                                                key={`${video.id}-${Date.now()}`}
-                                                src={videoInfo.url}
-                                                title={video.title || 'Video'}
-                                                className="absolute inset-0 w-full h-full"
-                                                controls
-                                                controlsList="nodownload noplaybackrate nofullscreen noremoteplayback"
-                                                playsInline
-                                                preload="metadata"
-                                                disablePictureInPicture
-                                                draggable="false"
-                                                onContextMenu={(e) => e.preventDefault()}
-                                                onDragStart={(e) => e.preventDefault()}
-                                                onError={(e) => {
-                                                  setVideoErrors(prev => ({
-                                                    ...prev,
-                                                    [video.id]: "Failed to load video. Please try again later."
-                                                  }));
-                                                }}
-                                              >
-                                                Your browser does not support the video tag.
-                                              </video>
+                                              {videoInfo.type === 'youtube' ? (
+                                                <AdvancedYouTubePlayer 
+                                                  videoId={videoInfo.url} 
+                                                  title={video.title}
+                                                />
+                                              ) : (
+                                                <video
+                                                  key={`${video.id}-${Date.now()}`}
+                                                  src={videoInfo.url}
+                                                  title={video.title}
+                                                  className="absolute inset-0 w-full h-full"
+                                                  controls
+                                                  controlsList="nodownload noplaybackrate"
+                                                  playsInline
+                                                  preload="metadata"
+                                                  onError={(e) => {
+                                                    setVideoErrors(prev => ({ 
+                                                      ...prev, 
+                                                      [video.id]: "Failed to load video. Please try again later." 
+                                                    }));
+                                                  }}
+                                                >
+                                                  Your browser does not support the video tag.
+                                                </video>
+                                              )}
                                               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title || 'Video'}</p>
+                                                <p className="text-white text-sm font-medium">{video.title}</p>
+                                                <p className="text-gray-300 text-xs">
+                                                  Platform Video Player
+                                                </p>
                                               </div>
                                             </>
                                           ) : (
@@ -1718,7 +2370,7 @@ const StudentDashboard: React.FC = () => {
                               ) : (
                                 <p className="text-gray-500 text-center py-4">No study materials available</p>
                               )}
-                        </div>
+                            </div>
                           )}
                         </div>
                       </div>
