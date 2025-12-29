@@ -188,13 +188,11 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    // If it's already a direct URL, return it
     return videoUrl;
   }
   
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
-  // Handle different URL formats
   if (videoUrl.includes('.mp4') || videoUrl.includes('.webm') || videoUrl.includes('.mov')) {
     let filename = videoUrl;
     if (filename.includes('/')) {
@@ -220,7 +218,6 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
     }
   }
   
-  // Default fallback
   return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
 };
 
@@ -228,50 +225,22 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
 const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
-  // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
-    // For YouTube, we'll use a service to get direct video URL
+    // For YouTube, we need to use a proxy or direct video stream
+    // We'll use a simple approach: show thumbnail and link to YouTube
     return { 
       url: `https://www.youtube.com/watch?v=${youtubeId}`, 
       type: 'youtube' 
     };
   }
   
-  // Check if it's a direct URL (starts with http)
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return { url: videoUrl, type: 'direct' };
   }
   
-  // Otherwise, assume it's from Supabase storage
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   return { url: supabaseUrl, type: 'supabase' };
-};
-
-// Function to get direct video stream URL (for YouTube and other services)
-const getDirectVideoUrl = async (videoUrl: string | null): Promise<string | null> => {
-  if (!videoUrl) return null;
-  
-  try {
-    const videoInfo = getVideoUrl(videoUrl);
-    
-    if (videoInfo.type === 'youtube') {
-      // For YouTube, we need to use a proxy service
-      // Here we'll use a simple approach - you might want to use a proper YouTube API
-      const youtubeId = extractYouTubeVideoId(videoInfo.url);
-      if (youtubeId) {
-        // Use yt-dlp or similar service - this is a simplified approach
-        // In production, you should use a backend service for this
-        return `https://www.youtube.com/embed/${youtubeId}`;
-      }
-    }
-    
-    // For other types, return the URL directly
-    return videoInfo.url;
-  } catch (error) {
-    console.error('Error getting direct video URL:', error);
-    return null;
-  }
 };
 
 // Custom Video Player Component
@@ -289,47 +258,35 @@ const CustomVideoPlayer: React.FC<{
   const [showControls, setShowControls] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
-  const [actualVideoUrl, setActualVideoUrl] = useState<string | null>(null);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [isYouTube, setIsYouTube] = useState(false);
+  const [youtubeId, setYoutubeId] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Load video URL
+  // Extract YouTube ID if it's a YouTube URL
   useEffect(() => {
-    const loadVideoUrl = async () => {
-      if (!videoUrl) {
-        setHasError(true);
-        setIsLoading(false);
-        return;
-      }
+    if (!videoUrl) {
+      setVideoSrc(null);
+      return;
+    }
 
-      try {
-        setIsLoading(true);
-        setHasError(false);
-        
-        const videoInfo = getVideoUrl(videoUrl);
-        
-        if (videoInfo.type === 'youtube') {
-          // For YouTube, we need to use iframe
-          // We'll set actualVideoUrl to null and handle it differently
-          setActualVideoUrl(null);
-          setIsLoading(false);
-        } else {
-          // For other video types, use direct URL
-          setActualVideoUrl(videoInfo.url);
-        }
-      } catch (error) {
-        console.error('Error loading video URL:', error);
-        setHasError(true);
-        setIsLoading(false);
-      }
-    };
-
-    loadVideoUrl();
+    const youtubeId = extractYouTubeVideoId(videoUrl);
+    if (youtubeId) {
+      setIsYouTube(true);
+      setYoutubeId(youtubeId);
+      // For YouTube videos, we'll use a different approach
+      setVideoSrc(null);
+    } else {
+      setIsYouTube(false);
+      setYoutubeId(null);
+      setVideoSrc(videoUrl);
+    }
   }, [videoUrl]);
 
-  // Handle video events for direct videos
+  // Handle video events
   useEffect(() => {
     const videoElement = videoRef.current;
-    if (!videoElement || !actualVideoUrl || getVideoUrl(videoUrl).type === 'youtube') return;
+    if (!videoElement || !videoSrc) return;
 
     const handleLoadedData = () => {
       setIsLoading(false);
@@ -346,6 +303,7 @@ const CustomVideoPlayer: React.FC<{
     const handleError = () => {
       setHasError(true);
       setIsLoading(false);
+      console.error('Video loading error:', videoElement.error);
     };
 
     const handleEnded = () => setIsPlaying(false);
@@ -370,7 +328,7 @@ const CustomVideoPlayer: React.FC<{
       videoElement.removeEventListener('error', handleError);
       videoElement.removeEventListener('ended', handleEnded);
     };
-  }, [actualVideoUrl, videoUrl, volume]);
+  }, [videoSrc, volume]);
 
   // Handle controls visibility
   useEffect(() => {
@@ -420,9 +378,9 @@ const CustomVideoPlayer: React.FC<{
     };
   }, []);
 
-  // Video control functions for direct videos
+  // Video control functions
   const togglePlay = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !videoSrc) return;
     
     if (videoRef.current.paused) {
       videoRef.current.play();
@@ -432,7 +390,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !videoSrc) return;
     
     const time = parseFloat(e.target.value);
     videoRef.current.currentTime = time;
@@ -440,7 +398,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !videoSrc) return;
     
     const newVolume = parseFloat(e.target.value);
     videoRef.current.volume = newVolume;
@@ -466,7 +424,7 @@ const CustomVideoPlayer: React.FC<{
   };
 
   const handleSkip = (seconds: number) => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || !videoSrc) return;
     
     videoRef.current.currentTime += seconds;
   };
@@ -480,10 +438,12 @@ const CustomVideoPlayer: React.FC<{
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Get video type
-  const videoInfo = getVideoUrl(videoUrl);
-  const isYouTube = videoInfo.type === 'youtube';
-  const youtubeId = extractYouTubeVideoId(videoUrl);
+  // Handle YouTube video - show thumbnail with play button that opens in new tab
+  const handleYouTubePlay = () => {
+    if (youtubeId) {
+      window.open(`https://www.youtube.com/watch?v=${youtubeId}`, '_blank');
+    }
+  };
 
   if (!videoUrl) {
     return (
@@ -496,7 +456,6 @@ const CustomVideoPlayer: React.FC<{
   }
 
   if (isYouTube && youtubeId) {
-    // For YouTube videos, use iframe with minimal branding
     return (
       <div 
         ref={containerRef}
@@ -506,43 +465,58 @@ const CustomVideoPlayer: React.FC<{
           return false;
         }}
       >
-        {/* YouTube iframe with minimal branding */}
-        <iframe
-          src={`https://www.youtube-nocookie.com/embed/${youtubeId}?modestbranding=1&rel=0&showinfo=0&controls=1&disablekb=1`}
-          title={title}
-          className="absolute inset-0 w-full h-full"
-          frameBorder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
-          referrerPolicy="strict-origin-when-cross-origin"
-        />
-        
-        {/* Custom overlay to hide YouTube branding */}
+        {/* YouTube thumbnail with play overlay */}
+        <div className="absolute inset-0 bg-gray-900">
+          <img
+            src={`https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`}
+            alt={title}
+            className="w-full h-full object-cover opacity-80"
+            onError={(e) => {
+              e.currentTarget.src = `https://img.youtube.com/vi/${youtubeId}/hqdefault.jpg`;
+            }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/40 to-transparent"></div>
+        </div>
+
+        {/* YouTube play button overlay */}
+        <div 
+          className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 cursor-pointer"
+          onClick={handleYouTubePlay}
+        >
+          <div className="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center shadow-2xl hover:bg-red-700 transition-colors">
+            <Play className="w-12 h-12 text-white ml-2" />
+          </div>
+          <p className="text-white text-lg font-medium mt-4">Click to play on YouTube</p>
+          <p className="text-gray-300 text-sm mt-2">Video will open in new tab</p>
+        </div>
+
+        {/* Top info bar */}
         <div className="absolute top-0 left-0 right-0 bg-gradient-to-b from-black/70 to-transparent p-4 z-10">
           <div className="flex justify-between items-start">
             <div className="text-white max-w-[70%]">
               <h3 className="font-semibold text-lg truncate">{title}</h3>
-              <p className="text-sm text-gray-300">Platform Video Player</p>
+              <p className="text-sm text-gray-300">YouTube Video</p>
+            </div>
+            <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
+              External Player
             </div>
           </div>
         </div>
-        
-        {/* Protection overlay to prevent right-click */}
+
+        {/* Protection overlay */}
         <div 
-          className="absolute inset-0 z-20"
+          className="absolute inset-0 z-0"
           onClick={(e) => e.stopPropagation()}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
             return false;
           }}
-          style={{ pointerEvents: 'none' }}
         />
       </div>
     );
   }
 
-  // For non-YouTube videos (Supabase or direct URLs)
   return (
     <div 
       ref={containerRef}
@@ -553,18 +527,20 @@ const CustomVideoPlayer: React.FC<{
       }}
     >
       {/* Video element for non-YouTube videos */}
-      <video
-        ref={videoRef}
-        src={actualVideoUrl || ''}
-        className="absolute inset-0 w-full h-full object-contain bg-black"
-        controls={false}
-        playsInline
-        preload="metadata"
-        onClick={togglePlay}
-      />
+      {videoSrc && (
+        <video
+          ref={videoRef}
+          src={videoSrc}
+          className="absolute inset-0 w-full h-full object-contain bg-black"
+          controls={false}
+          playsInline
+          preload="metadata"
+          onClick={togglePlay}
+        />
+      )}
 
       {/* Loading overlay */}
-      {isLoading && (
+      {isLoading && videoSrc && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
@@ -590,15 +566,15 @@ const CustomVideoPlayer: React.FC<{
             <p className="text-sm text-gray-300">Platform Video Player</p>
           </div>
           <div className="text-xs text-gray-300 bg-black/50 px-2 py-1 rounded">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {videoSrc ? `${formatTime(currentTime)} / ${formatTime(duration)}` : 'Ready'}
           </div>
         </div>
       </div>
 
-      {/* Center play button overlay */}
-      {!isPlaying && !isLoading && !hasError && (
+      {/* Center play button overlay for non-YouTube videos */}
+      {!isPlaying && !isLoading && !hasError && videoSrc && (
         <div 
-          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer z-10"
+          className="absolute inset-0 flex items-center justify-center bg-black/30 cursor-pointer"
           onClick={togglePlay}
         >
           <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
@@ -607,103 +583,116 @@ const CustomVideoPlayer: React.FC<{
         </div>
       )}
 
-      {/* Controls overlay */}
-      <div 
-        className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 z-10 ${
-          showControls ? 'opacity-100' : 'opacity-0'
-        }`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Progress bar */}
-        <div className="mb-3">
-          <input
-            type="range"
-            min="0"
-            max={duration || 100}
-            value={currentTime}
-            onChange={handleSeek}
-            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-          />
-          <div className="flex justify-between text-xs text-gray-300 mt-1">
-            <span>{formatTime(currentTime)}</span>
-            <span>{formatTime(duration)}</span>
-          </div>
-        </div>
-
-        {/* Controls bar */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            {/* Play/Pause */}
-            <button
-              onClick={togglePlay}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              {isPlaying ? (
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                </svg>
-              )}
-            </button>
-
-            {/* Volume */}
-            <div className="flex items-center space-x-2">
-              <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
-              </svg>
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.1"
-                value={volume}
-                onChange={handleVolumeChange}
-                className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
-              />
-            </div>
-
-            {/* Skip buttons */}
-            <div className="flex items-center space-x-1">
-              <button
-                onClick={() => handleSkip(-10)}
-                className="text-white hover:text-gray-300 text-sm px-2 py-1"
-              >
-                -10s
-              </button>
-              <button
-                onClick={() => handleSkip(10)}
-                className="text-white hover:text-gray-300 text-sm px-2 py-1"
-              >
-                +10s
-              </button>
+      {/* Controls overlay for non-YouTube videos */}
+      {videoSrc && (
+        <div 
+          className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent p-4 transition-opacity duration-300 ${
+            showControls ? 'opacity-100' : 'opacity-0'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Progress bar */}
+          <div className="mb-3">
+            <input
+              type="range"
+              min="0"
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+            />
+            <div className="flex justify-between text-xs text-gray-300 mt-1">
+              <span>{formatTime(currentTime)}</span>
+              <span>{formatTime(duration)}</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
-            {/* Fullscreen */}
-            <button
-              onClick={toggleFullscreen}
-              className="text-white hover:text-gray-300 transition-colors"
-            >
-              {isFullscreen ? (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+          {/* Controls bar */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              {/* Play/Pause */}
+              <button
+                onClick={togglePlay}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                {isPlaying ? (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Volume */}
+              <div className="flex items-center space-x-2">
+                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clipRule="evenodd" />
                 </svg>
-              ) : (
-                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-              )}
-            </button>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={handleVolumeChange}
+                  className="w-20 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white"
+                />
+              </div>
+
+              {/* Skip buttons */}
+              <div className="flex items-center space-x-1">
+                <button
+                  onClick={() => handleSkip(-10)}
+                  className="text-white hover:text-gray-300 text-sm px-2 py-1"
+                >
+                  -10s
+                </button>
+                <button
+                  onClick={() => handleSkip(10)}
+                  className="text-white hover:text-gray-300 text-sm px-2 py-1"
+                >
+                  +10s
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3">
+              {/* Fullscreen */}
+              <button
+                onClick={toggleFullscreen}
+                className="text-white hover:text-gray-300 transition-colors"
+              >
+                {isFullscreen ? (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h4a1 1 0 010 2H6.414l2.293 2.293a1 1 0 01-1.414 1.414L5 6.414V8a1 1 0 01-2 0V4zm9 1a1 1 0 110-2h4a1 1 0 011 1v4a1 1 0 11-2 0V6.414l-2.293 2.293a1 1 0 11-1.414-1.414L13.586 5H12zm-9 7a1 1 0 112 0v1.586l2.293-2.293a1 1 0 011.414 1.414L6.414 15H8a1 1 0 110 2H4a1 1 0 01-1-1v-4zm13-1a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 110-2h1.586l-2.293-2.293a1 1 0 011.414-1.414L15 13.586V12a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Bottom gradient overlay */}
-      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-0"></div>
+      <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/50 to-transparent pointer-events-none"></div>
+
+      {/* Protection overlay */}
+      <div 
+        className="absolute inset-0 z-0"
+        onClick={(e) => e.stopPropagation()}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }}
+      />
     </div>
   );
 };
@@ -1989,7 +1978,7 @@ const StudentDashboard: React.FC = () => {
                                     {activeVideo === video.id && video.video_url && (
                                       <div className="p-4 bg-black">
                                         <CustomVideoPlayer 
-                                          videoUrl={video.video_url}
+                                          videoUrl={videoInfo.url}
                                           title={video.title}
                                         />
                                       </div>
