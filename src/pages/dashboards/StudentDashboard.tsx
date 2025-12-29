@@ -163,18 +163,21 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID - FIXED VERSION
+// Function to extract YouTube Video ID - SIMPLIFIED AND WORKING
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
   const cleanUrl = url.trim();
   
+  console.log("Extracting YouTube ID from:", cleanUrl);
+  
   // Handle youtu.be URLs
   if (cleanUrl.includes('youtu.be/')) {
     const parts = cleanUrl.split('youtu.be/');
     if (parts[1]) {
-      const videoId = parts[1].split(/[?&]/)[0];
-      if (videoId.length === 11) return videoId;
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from youtu.be:", videoId);
+      return videoId;
     }
   }
   
@@ -182,8 +185,9 @@ const extractYouTubeVideoId = (url: string | null): string | null => {
   if (cleanUrl.includes('youtube.com/embed/')) {
     const parts = cleanUrl.split('youtube.com/embed/');
     if (parts[1]) {
-      const videoId = parts[1].split(/[?&]/)[0];
-      if (videoId.length === 11) return videoId;
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from embed:", videoId);
+      return videoId;
     }
   }
   
@@ -191,26 +195,33 @@ const extractYouTubeVideoId = (url: string | null): string | null => {
   if (cleanUrl.includes('youtube.com/watch?v=')) {
     const parts = cleanUrl.split('v=');
     if (parts[1]) {
-      const videoId = parts[1].split(/[?&]/)[0];
-      if (videoId.length === 11) return videoId;
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from watch:", videoId);
+      return videoId;
     }
   }
   
-  // Handle generic YouTube URLs
-  const regex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+  // Try regex pattern
+  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
   const match = cleanUrl.match(regex);
   if (match && match[1]) {
+    console.log("Extracted from regex:", match[1]);
     return match[1];
   }
   
+  console.log("No YouTube ID found");
   return null;
 };
 
-// Function to get public URL from Supabase Storage
+// Function to get public URL from Supabase Storage - FIXED
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
+  console.log("Getting public URL for:", videoUrl);
+  
+  // If it's already a full URL, return it
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+    console.log("Already a full URL:", videoUrl);
     return videoUrl;
   }
   
@@ -218,6 +229,7 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   
   // If it's already a Supabase URL, return it
   if (videoUrl.includes(supabaseUrl)) {
+    console.log("Already a Supabase URL:", videoUrl);
     return videoUrl;
   }
   
@@ -226,6 +238,7 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (filename.includes('/')) {
     const parts = filename.split('/');
     filename = parts[parts.length - 1];
+    console.log("Extracted filename:", filename);
   }
   
   // Remove any query parameters
@@ -233,21 +246,28 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
     filename = filename.split('?')[0];
   }
   
-  // Return the public URL for videos bucket
-  return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+  const result = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+  console.log("Generated Supabase URL:", result);
+  return result;
 };
 
-// Function to get proper video URL based on source
+// Function to get proper video URL based on source - FIXED
 const getVideoInfo = (videoUrl: string | null): { 
   url: string | null; 
   type: 'youtube' | 'supabase' | 'direct' | 'unknown'; 
   videoId?: string | null;
 } => {
-  if (!videoUrl) return { url: null, type: 'unknown' };
+  if (!videoUrl) {
+    console.log("No video URL provided");
+    return { url: null, type: 'unknown' };
+  }
+  
+  console.log("Getting video info for URL:", videoUrl);
   
   // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
+    console.log("Detected YouTube video with ID:", youtubeId);
     return { 
       url: `https://www.youtube.com/embed/${youtubeId}`, 
       type: 'youtube',
@@ -258,6 +278,7 @@ const getVideoInfo = (videoUrl: string | null): {
   // Check if it's a Supabase URL or needs conversion
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   if (supabaseUrl) {
+    console.log("Detected Supabase video with URL:", supabaseUrl);
     return { 
       url: supabaseUrl, 
       type: 'supabase'
@@ -265,244 +286,124 @@ const getVideoInfo = (videoUrl: string | null): {
   }
   
   // Direct URL
+  console.log("Detected direct video URL:", videoUrl);
   return { url: videoUrl, type: 'direct' };
 };
 
-// Enhanced YouTube Player Component with ALL requested features
-const EnhancedYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+// SIMPLE WORKING YouTube Player Component
+const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const getEmbedUrl = () => {
     const params = new URLSearchParams({
-      'rel': '0',           // Don't show related videos
-      'modestbranding': '1', // Minimal branding
-      'showinfo': '0',      // Hide info
-      'controls': '1',      // Show controls
-      'fs': '0',           // Disable fullscreen
-      'disablekb': '1',     // Disable keyboard controls
-      'iv_load_policy': '3', // Hide annotations
-      'enablejsapi': '0',   // Disable JS API
-      'origin': window.location.origin, // Domain lock
+      'rel': '0',
+      'modestbranding': '1',
+      'showinfo': '0',
+      'controls': '1',
+      'fs': '0',
+      'disablekb': '1',
+      'iv_load_policy': '3',
+      'enablejsapi': '0',
+      'origin': window.location.origin,
       'widget_referrer': window.location.origin,
       'playsinline': '1',
       'autoplay': '0',
-      'mute': '0',
-      'loop': '0'
+      'mute': '0'
     });
 
-    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
   };
 
   const handleIframeLoad = () => {
+    console.log("YouTube iframe loaded successfully");
     setIsLoaded(true);
     setError(null);
   };
 
   const handleIframeError = () => {
-    setError("Failed to load YouTube video. Please check your internet connection.");
+    console.error("YouTube iframe failed to load");
+    setError("Failed to load YouTube video. The video may be private or unavailable.");
     setIsLoaded(false);
   };
 
-  // Inject CSS to hide YouTube branding
-  useEffect(() => {
-    const styleId = 'youtube-player-styles';
-    const existingStyle = document.getElementById(styleId);
-    
-    if (!existingStyle) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = `
-        .enhanced-youtube-player iframe {
-          filter: contrast(1.05) brightness(1.02);
-        }
-        
-        /* Hide YouTube branding */
-        .enhanced-youtube-player .ytp-chrome-top,
-        .enhanced-youtube-player .ytp-title-text,
-        .enhanced-youtube-player .ytp-title-link,
-        .enhanced-youtube-player .ytp-watermark,
-        .enhanced-youtube-player .ytp-logo,
-        .enhanced-youtube-player .ytp-branding {
-          display: none !important;
-          opacity: 0 !important;
-          visibility: hidden !important;
-        }
-        
-        /* Hide related videos and suggestions */
-        .enhanced-youtube-player .ytp-pause-overlay,
-        .enhanced-youtube-player .ytp-ce-element {
-          display: none !important;
-        }
-        
-        /* Disable fullscreen button */
-        .enhanced-youtube-player .ytp-fullscreen-button {
-          display: none !important;
-          pointer-events: none !important;
-        }
-        
-        /* Loading overlay */
-        .youtube-loading-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: #000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 10;
-        }
-        
-        /* Error overlay */
-        .youtube-error-overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: #000;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          z-index: 20;
-          padding: 20px;
-          text-align: center;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    // Prevent context menu
-    const preventContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      return false;
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('contextmenu', preventContextMenu);
-    }
-
-    return () => {
-      if (container) {
-        container.removeEventListener('contextmenu', preventContextMenu);
-      }
-    };
-  }, []);
-
-  // Block keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Block F for fullscreen, Space for play/pause
-      if (e.key === 'f' || e.key === 'F' || e.key === ' ') {
-        if (containerRef.current?.contains(e.target as Node)) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, []);
-
   return (
-    <div ref={containerRef} className="enhanced-youtube-player relative w-full h-full bg-black overflow-hidden rounded-lg">
+    <div className="relative w-full h-full bg-black overflow-hidden rounded-lg">
       {!isLoaded && !error && (
-        <div className="youtube-loading-overlay">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white">Loading secure YouTube player...</p>
+            <p className="text-white">Loading YouTube video...</p>
           </div>
         </div>
       )}
       
       {error && (
-        <div className="youtube-error-overlay">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gray-900 z-20">
           <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-          <p className="text-white text-lg font-semibold mb-2">Video Error</p>
+          <p className="text-white text-lg font-semibold mb-2">YouTube Video Error</p>
           <p className="text-gray-300 text-sm mb-4">{error}</p>
           <button
             onClick={() => {
               setError(null);
               setIsLoaded(false);
-              if (iframeRef.current) {
-                iframeRef.current.src = getEmbedUrl();
-              }
             }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
           >
-            Retry Loading Video
+            Retry
           </button>
         </div>
       )}
       
       <iframe
-        ref={iframeRef}
         src={getEmbedUrl()}
         title={title}
-        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        className="absolute inset-0 w-full h-full"
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen={false}
-        referrerPolicy="no-referrer"
+        referrerPolicy="strict-origin-when-cross-origin"
         loading="lazy"
         onLoad={handleIframeLoad}
         onError={handleIframeError}
-        sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
-        style={{
-          backgroundColor: '#000',
-        }}
       />
       
       {isLoaded && (
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
           <p className="text-white text-sm font-medium">{title}</p>
-          <p className="text-gray-300 text-xs">Secure YouTube Player • Domain Locked</p>
+          <p className="text-gray-300 text-xs">YouTube Video Player</p>
         </div>
       )}
-      
-      {/* Protection overlay */}
-      <div 
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: 'linear-gradient(transparent 95%, rgba(0,0,0,0.3) 100%)'
-        }}
-      />
     </div>
   );
 };
 
-// Direct Video Player Component for non-YouTube videos
+// SIMPLE WORKING Direct Video Player Component
 const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUrl, title}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    console.log("DirectVideoPlayer mounting with URL:", videoUrl);
     setIsLoading(true);
     setError(null);
     
     if (videoRef.current) {
+      console.log("Loading video element");
       videoRef.current.load();
     }
   }, [videoUrl]);
 
-  const handleVideoError = () => {
+  const handleVideoLoad = () => {
+    console.log("Video loaded successfully");
     setIsLoading(false);
-    setError("Failed to load video. The video may be unavailable or the format is not supported.");
   };
 
-  const handleVideoLoad = () => {
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+    console.error("Video error:", e);
     setIsLoading(false);
+    setError("Failed to load video. Please check the URL or try again later.");
   };
 
   const handleVideoContextMenu = (e: React.MouseEvent) => {
@@ -510,27 +411,8 @@ const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUr
     return false;
   };
 
-  // Prevent context menu
-  useEffect(() => {
-    const preventContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      return false;
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('contextmenu', preventContextMenu);
-    }
-
-    return () => {
-      if (container) {
-        container.removeEventListener('contextmenu', preventContextMenu);
-      }
-    };
-  }, []);
-
   return (
-    <div ref={containerRef} className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
           <div className="text-center">
@@ -540,7 +422,7 @@ const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUr
         </div>
       )}
       
-      {error ? (
+      {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gray-900 z-20">
           <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
           <p className="text-white text-lg font-semibold mb-2">Video Error</p>
@@ -555,62 +437,72 @@ const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUr
             }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
           >
-            Retry Loading Video
+            Retry
           </button>
         </div>
-      ) : (
-        <video
-          ref={videoRef}
-          key={videoUrl}
-          src={videoUrl}
-          title={title}
-          className="absolute inset-0 w-full h-full"
-          controls
-          controlsList="nodownload noplaybackrate nofullscreen"
-          playsInline
-          preload="metadata"
-          onLoadedData={handleVideoLoad}
-          onCanPlay={handleVideoLoad}
-          onError={handleVideoError}
-          onContextMenu={handleVideoContextMenu}
-          disablePictureInPicture
-        >
-          <source src={videoUrl} type="video/mp4" />
-          <source src={videoUrl} type="video/webm" />
-          <source src={videoUrl} type="video/ogg" />
-          Your browser does not support the video tag.
-        </video>
       )}
       
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
-        <p className="text-white text-sm font-medium">{title}</p>
-        <p className="text-gray-300 text-xs">Platform Video Player • Protected</p>
-      </div>
+      <video
+        ref={videoRef}
+        key={videoUrl}
+        src={videoUrl}
+        title={title}
+        className="absolute inset-0 w-full h-full"
+        controls
+        controlsList="nodownload noplaybackrate"
+        playsInline
+        preload="metadata"
+        onLoadedData={handleVideoLoad}
+        onCanPlay={handleVideoLoad}
+        onError={handleVideoError}
+        onContextMenu={handleVideoContextMenu}
+      >
+        <source src={videoUrl} type="video/mp4" />
+        <source src={videoUrl} type="video/webm" />
+        Your browser does not support the video tag.
+      </video>
+      
+      {!isLoading && !error && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
+          <p className="text-white text-sm font-medium">{title}</p>
+          <p className="text-gray-300 text-xs">Platform Video Player</p>
+        </div>
+      )}
     </div>
   );
 };
 
-// Main Video Player Component
+// Main Video Player Component - SIMPLE AND WORKING
 const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> = ({videoUrl, title}) => {
   const videoInfo = getVideoInfo(videoUrl);
 
+  console.log("VideoPlayerComponent rendering with:", { 
+    videoUrl, 
+    videoInfo,
+    title 
+  });
+
   if (!videoInfo.url) {
+    console.log("No video URL available");
     return (
       <div className="relative w-full h-full bg-gray-900 flex items-center justify-center rounded-lg">
         <div className="text-center p-6">
           <Video className="w-16 h-16 text-gray-500 mx-auto mb-4" />
           <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
-          <p className="text-gray-400 text-sm">This video is currently unavailable or the link is invalid.</p>
-          <p className="text-gray-500 text-xs mt-2">URL: {videoUrl?.substring(0, 50)}...</p>
+          <p className="text-gray-400 text-sm">This video is currently unavailable.</p>
+          {videoUrl && (
+            <p className="text-gray-500 text-xs mt-2 break-all">URL: {videoUrl.substring(0, 100)}...</p>
+          )}
         </div>
       </div>
     );
   }
 
   if (videoInfo.type === 'youtube' && videoInfo.videoId) {
+    console.log("Rendering YouTube player with ID:", videoInfo.videoId);
     return (
       <div className="w-full h-full">
-        <EnhancedYouTubePlayer 
+        <YouTubePlayer 
           videoId={videoInfo.videoId} 
           title={title}
         />
@@ -618,6 +510,7 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
     );
   }
 
+  console.log("Rendering direct video player with URL:", videoInfo.url);
   return (
     <div className="w-full h-full">
       <DirectVideoPlayer 
@@ -1274,6 +1167,7 @@ const StudentDashboard: React.FC = () => {
   };
 
   const handleVideoPlay = (videoId: string) => {
+    console.log("Handle video play clicked for video ID:", videoId);
     setActiveVideo(activeVideo === videoId ? null : videoId);
   };
 
@@ -1866,6 +1760,13 @@ const StudentDashboard: React.FC = () => {
                           ) : sub.videosWithExams.length > 0 ? (
                             <div className="space-y-6">
                               {sub.videosWithExams.map((video) => {
+                                console.log("Video data:", {
+                                  id: video.id,
+                                  title: video.title,
+                                  url: video.video_url,
+                                  active: activeVideo === video.id
+                                });
+                                
                                 return (
                                   <div key={video.id} className="border rounded-lg overflow-hidden">
                                     <div 
@@ -1891,7 +1792,7 @@ const StudentDashboard: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {activeVideo === video.id && video.video_url && (
+                                    {activeVideo === video.id && (
                                       <div className="p-4 bg-black">
                                         <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
                                           <VideoPlayerComponent 
