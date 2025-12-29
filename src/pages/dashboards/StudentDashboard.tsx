@@ -163,62 +163,61 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID - IMPROVED VERSION
+// Function to extract YouTube Video ID - FIXED VERSION
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
-  // Clean the URL first
   const cleanUrl = url.trim();
   
-  // Handle different YouTube URL formats
-  const patterns = [
-    // youtu.be format
-    /youtu\.be\/([^#&\?]{11})/,
-    // youtube.com/embed format
-    /youtube\.com\/embed\/([^#&\?]{11})/,
-    // youtube.com/watch?v= format
-    /youtube\.com\/watch\?v=([^#&\?]{11})/,
-    // youtube.com/v/ format
-    /youtube\.com\/v\/([^#&\?]{11})/,
-    // youtube.com/shorts/ format
-    /youtube\.com\/shorts\/([^#&\?]{11})/,
-    // youtube.com/live/ format
-    /youtube\.com\/live\/([^#&\?]{11})/,
-    // Generic pattern for any YouTube URL with v parameter
-    /[?&]v=([^#&\?]{11})/,
-    // Generic pattern for any YouTube URL with video ID in path
-    /\/([^#&\?]{11})(?:\?|$|&)/
-  ];
-  
-  for (const pattern of patterns) {
-    const match = cleanUrl.match(pattern);
-    if (match && match[1]) {
-      return match[1];
+  // Handle youtu.be URLs
+  if (cleanUrl.includes('youtu.be/')) {
+    const parts = cleanUrl.split('youtu.be/');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&]/)[0];
+      if (videoId.length === 11) return videoId;
     }
   }
   
-  // Check if it's already a video ID (11 characters)
-  if (cleanUrl.length === 11 && !cleanUrl.includes('/') && !cleanUrl.includes('.')) {
-    return cleanUrl;
+  // Handle youtube.com/embed URLs
+  if (cleanUrl.includes('youtube.com/embed/')) {
+    const parts = cleanUrl.split('youtube.com/embed/');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&]/)[0];
+      if (videoId.length === 11) return videoId;
+    }
+  }
+  
+  // Handle youtube.com/watch?v= URLs
+  if (cleanUrl.includes('youtube.com/watch?v=')) {
+    const parts = cleanUrl.split('v=');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&]/)[0];
+      if (videoId.length === 11) return videoId;
+    }
+  }
+  
+  // Handle generic YouTube URLs
+  const regex = /(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+  const match = cleanUrl.match(regex);
+  if (match && match[1]) {
+    return match[1];
   }
   
   return null;
 };
 
-// Function to get public URL from Supabase Storage - SIMPLIFIED
+// Function to get public URL from Supabase Storage
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
-  // If it's already a full URL, return it
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return videoUrl;
   }
   
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
-  // Handle different Supabase storage formats
-  if (videoUrl.includes('supabase.co')) {
-    // Already a Supabase URL
+  // If it's already a Supabase URL, return it
+  if (videoUrl.includes(supabaseUrl)) {
     return videoUrl;
   }
   
@@ -234,11 +233,11 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
     filename = filename.split('?')[0];
   }
   
-  // Return the public URL
+  // Return the public URL for videos bucket
   return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
 };
 
-// Function to get proper video URL based on source - SIMPLIFIED
+// Function to get proper video URL based on source
 const getVideoInfo = (videoUrl: string | null): { 
   url: string | null; 
   type: 'youtube' | 'supabase' | 'direct' | 'unknown'; 
@@ -246,7 +245,7 @@ const getVideoInfo = (videoUrl: string | null): {
 } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
-  // Try YouTube first
+  // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
     return { 
@@ -256,7 +255,7 @@ const getVideoInfo = (videoUrl: string | null): {
     };
   }
   
-  // Try Supabase
+  // Check if it's a Supabase URL or needs conversion
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   if (supabaseUrl) {
     return { 
@@ -266,33 +265,35 @@ const getVideoInfo = (videoUrl: string | null): {
   }
   
   // Direct URL
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return { 
-      url: videoUrl, 
-      type: 'direct'
-    };
-  }
-  
-  return { url: null, type: 'unknown' };
+  return { url: videoUrl, type: 'direct' };
 };
 
-// SIMPLE YouTube Player Component - FIXED VERSION
-const SimpleYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
+// Enhanced YouTube Player Component with ALL requested features
+const EnhancedYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const getEmbedUrl = () => {
-    // SIMPLE embed URL without complex parameters
     const params = new URLSearchParams({
-      'rel': '0', // Don't show related videos
+      'rel': '0',           // Don't show related videos
       'modestbranding': '1', // Minimal branding
-      'showinfo': '0', // Hide info
-      'controls': '1', // Show controls
-      'fs': '0' // Disable fullscreen
+      'showinfo': '0',      // Hide info
+      'controls': '1',      // Show controls
+      'fs': '0',           // Disable fullscreen
+      'disablekb': '1',     // Disable keyboard controls
+      'iv_load_policy': '3', // Hide annotations
+      'enablejsapi': '0',   // Disable JS API
+      'origin': window.location.origin, // Domain lock
+      'widget_referrer': window.location.origin,
+      'playsinline': '1',
+      'autoplay': '0',
+      'mute': '0',
+      'loop': '0'
     });
 
-    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
   };
 
   const handleIframeLoad = () => {
@@ -301,36 +302,144 @@ const SimpleYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoI
   };
 
   const handleIframeError = () => {
-    setError("Failed to load YouTube video");
+    setError("Failed to load YouTube video. Please check your internet connection.");
     setIsLoaded(false);
   };
 
+  // Inject CSS to hide YouTube branding
+  useEffect(() => {
+    const styleId = 'youtube-player-styles';
+    const existingStyle = document.getElementById(styleId);
+    
+    if (!existingStyle) {
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = `
+        .enhanced-youtube-player iframe {
+          filter: contrast(1.05) brightness(1.02);
+        }
+        
+        /* Hide YouTube branding */
+        .enhanced-youtube-player .ytp-chrome-top,
+        .enhanced-youtube-player .ytp-title-text,
+        .enhanced-youtube-player .ytp-title-link,
+        .enhanced-youtube-player .ytp-watermark,
+        .enhanced-youtube-player .ytp-logo,
+        .enhanced-youtube-player .ytp-branding {
+          display: none !important;
+          opacity: 0 !important;
+          visibility: hidden !important;
+        }
+        
+        /* Hide related videos and suggestions */
+        .enhanced-youtube-player .ytp-pause-overlay,
+        .enhanced-youtube-player .ytp-ce-element {
+          display: none !important;
+        }
+        
+        /* Disable fullscreen button */
+        .enhanced-youtube-player .ytp-fullscreen-button {
+          display: none !important;
+          pointer-events: none !important;
+        }
+        
+        /* Loading overlay */
+        .youtube-loading-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: #000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+        }
+        
+        /* Error overlay */
+        .youtube-error-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          background: #000;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          z-index: 20;
+          padding: 20px;
+          text-align: center;
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // Prevent context menu
+    const preventContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      return false;
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('contextmenu', preventContextMenu);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('contextmenu', preventContextMenu);
+      }
+    };
+  }, []);
+
+  // Block keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Block F for fullscreen, Space for play/pause
+      if (e.key === 'f' || e.key === 'F' || e.key === ' ') {
+        if (containerRef.current?.contains(e.target as Node)) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, []);
+
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden rounded-lg">
+    <div ref={containerRef} className="enhanced-youtube-player relative w-full h-full bg-black overflow-hidden rounded-lg">
       {!isLoaded && !error && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+        <div className="youtube-loading-overlay">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white">Loading YouTube video...</p>
+            <p className="text-white">Loading secure YouTube player...</p>
           </div>
         </div>
       )}
       
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+        <div className="youtube-error-overlay">
           <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
           <p className="text-white text-lg font-semibold mb-2">Video Error</p>
           <p className="text-gray-300 text-sm mb-4">{error}</p>
           <button
             onClick={() => {
               setError(null);
+              setIsLoaded(false);
               if (iframeRef.current) {
                 iframeRef.current.src = getEmbedUrl();
               }
             }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
           >
-            Retry
+            Retry Loading Video
           </button>
         </div>
       )}
@@ -347,34 +456,41 @@ const SimpleYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoI
         loading="lazy"
         onLoad={handleIframeLoad}
         onError={handleIframeError}
+        sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox"
         style={{
           backgroundColor: '#000',
         }}
       />
       
       {isLoaded && (
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
           <p className="text-white text-sm font-medium">{title}</p>
-          <p className="text-gray-300 text-xs">YouTube Video Player</p>
+          <p className="text-gray-300 text-xs">Secure YouTube Player • Domain Locked</p>
         </div>
       )}
+      
+      {/* Protection overlay */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: 'linear-gradient(transparent 95%, rgba(0,0,0,0.3) 100%)'
+        }}
+      />
     </div>
   );
 };
 
-// Unified Video Player Component - SIMPLIFIED
-const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> = ({videoUrl, title}) => {
+// Direct Video Player Component for non-YouTube videos
+const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUrl, title}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-
-  const videoInfo = getVideoInfo(videoUrl);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsLoading(true);
     setError(null);
     
-    // Reset video if exists
     if (videoRef.current) {
       videoRef.current.load();
     }
@@ -382,46 +498,41 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
 
   const handleVideoError = () => {
     setIsLoading(false);
-    setError("Failed to load video. The video may be unavailable or corrupted.");
+    setError("Failed to load video. The video may be unavailable or the format is not supported.");
   };
 
   const handleVideoLoad = () => {
     setIsLoading(false);
   };
 
-  // Block right-click on video
   const handleVideoContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     return false;
   };
 
-  if (!videoInfo.url) {
-    return (
-      <div className="relative w-full h-full bg-gray-900 flex items-center justify-center rounded-lg">
-        <div className="text-center">
-          <Video className="w-16 h-16 text-gray-500 mx-auto mb-4" />
-          <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
-          <p className="text-gray-400 text-sm">This video is currently unavailable.</p>
-        </div>
-      </div>
-    );
-  }
+  // Prevent context menu
+  useEffect(() => {
+    const preventContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      return false;
+    };
 
-  if (videoInfo.type === 'youtube' && videoInfo.videoId) {
-    return (
-      <div className="w-full h-full">
-        <SimpleYouTubePlayer 
-          videoId={videoInfo.videoId} 
-          title={title}
-        />
-      </div>
-    );
-  }
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('contextmenu', preventContextMenu);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('contextmenu', preventContextMenu);
+      }
+    };
+  }, []);
 
   return (
-    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+    <div ref={containerRef} className="relative w-full h-full bg-black rounded-lg overflow-hidden">
       {isLoading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
             <p className="text-white">Loading video...</p>
@@ -430,7 +541,7 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
       )}
       
       {error ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gray-900 z-20">
           <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
           <p className="text-white text-lg font-semibold mb-2">Video Error</p>
           <p className="text-gray-300 text-sm mb-4">{error}</p>
@@ -444,33 +555,75 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
             }}
             className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
           >
-            Retry
+            Retry Loading Video
           </button>
         </div>
       ) : (
         <video
           ref={videoRef}
-          key={videoInfo.url} // Force re-render when URL changes
-          src={videoInfo.url}
+          key={videoUrl}
+          src={videoUrl}
           title={title}
           className="absolute inset-0 w-full h-full"
           controls
-          controlsList="nodownload noplaybackrate"
+          controlsList="nodownload noplaybackrate nofullscreen"
           playsInline
           preload="metadata"
           onLoadedData={handleVideoLoad}
           onCanPlay={handleVideoLoad}
           onError={handleVideoError}
           onContextMenu={handleVideoContextMenu}
+          disablePictureInPicture
         >
+          <source src={videoUrl} type="video/mp4" />
+          <source src={videoUrl} type="video/webm" />
+          <source src={videoUrl} type="video/ogg" />
           Your browser does not support the video tag.
         </video>
       )}
       
-      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
         <p className="text-white text-sm font-medium">{title}</p>
-        <p className="text-gray-300 text-xs">Platform Video Player</p>
+        <p className="text-gray-300 text-xs">Platform Video Player • Protected</p>
       </div>
+    </div>
+  );
+};
+
+// Main Video Player Component
+const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> = ({videoUrl, title}) => {
+  const videoInfo = getVideoInfo(videoUrl);
+
+  if (!videoInfo.url) {
+    return (
+      <div className="relative w-full h-full bg-gray-900 flex items-center justify-center rounded-lg">
+        <div className="text-center p-6">
+          <Video className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+          <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
+          <p className="text-gray-400 text-sm">This video is currently unavailable or the link is invalid.</p>
+          <p className="text-gray-500 text-xs mt-2">URL: {videoUrl?.substring(0, 50)}...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (videoInfo.type === 'youtube' && videoInfo.videoId) {
+    return (
+      <div className="w-full h-full">
+        <EnhancedYouTubePlayer 
+          videoId={videoInfo.videoId} 
+          title={title}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full">
+      <DirectVideoPlayer 
+        videoUrl={videoInfo.url} 
+        title={title}
+      />
     </div>
   );
 };
