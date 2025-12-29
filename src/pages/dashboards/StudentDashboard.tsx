@@ -163,927 +163,212 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID
+// Function to extract YouTube Video ID - IMPROVED VERSION
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
+  // Clean the URL first
+  const cleanUrl = url.trim();
+  
+  // Handle different YouTube URL formats
   const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /youtube\.com\/v\/([^&\n?#]+)/,
-    /youtube\.com\/watch\?.*v=([^&\n?#]+)/
+    // youtu.be format
+    /youtu\.be\/([^#&\?]{11})/,
+    // youtube.com/embed format
+    /youtube\.com\/embed\/([^#&\?]{11})/,
+    // youtube.com/watch?v= format
+    /youtube\.com\/watch\?v=([^#&\?]{11})/,
+    // youtube.com/v/ format
+    /youtube\.com\/v\/([^#&\?]{11})/,
+    // youtube.com/shorts/ format
+    /youtube\.com\/shorts\/([^#&\?]{11})/,
+    // youtube.com/live/ format
+    /youtube\.com\/live\/([^#&\?]{11})/,
+    // Generic pattern for any YouTube URL with v parameter
+    /[?&]v=([^#&\?]{11})/,
+    // Generic pattern for any YouTube URL with video ID in path
+    /\/([^#&\?]{11})(?:\?|$|&)/
   ];
   
   for (const pattern of patterns) {
-    const match = url.match(pattern);
+    const match = cleanUrl.match(pattern);
     if (match && match[1]) {
       return match[1];
     }
   }
   
+  // Check if it's already a video ID (11 characters)
+  if (cleanUrl.length === 11 && !cleanUrl.includes('/') && !cleanUrl.includes('.')) {
+    return cleanUrl;
+  }
+  
   return null;
 };
 
-// Function to get public URL from Supabase Storage
+// Function to get public URL from Supabase Storage - SIMPLIFIED
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
   
+  // If it's already a full URL, return it
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
     return videoUrl;
   }
   
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
   
-  if (videoUrl.includes('.mp4') || videoUrl.includes('.webm') || videoUrl.includes('.mov')) {
-    let filename = videoUrl;
-    if (filename.includes('/')) {
-      const parts = filename.split('/');
-      filename = parts[parts.length - 1];
-    }
-    
-    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+  // Handle different Supabase storage formats
+  if (videoUrl.includes('supabase.co')) {
+    // Already a Supabase URL
+    return videoUrl;
   }
   
-  if (videoUrl.startsWith('videos/')) {
-    const filename = videoUrl.replace('videos/', '');
-    return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+  // Extract filename from path
+  let filename = videoUrl;
+  if (filename.includes('/')) {
+    const parts = filename.split('/');
+    filename = parts[parts.length - 1];
   }
   
-  if (videoUrl.includes('storage/v1/object')) {
-    if (videoUrl.includes('/storage/v1/object/')) {
-      const parts = videoUrl.split('/storage/v1/object/');
-      if (parts.length > 1) {
-        const [domain, path] = parts;
-        return `${domain}/storage/v1/object/public/${path}`;
-      }
-    }
+  // Remove any query parameters
+  if (filename.includes('?')) {
+    filename = filename.split('?')[0];
   }
   
-  return `${supabaseUrl}/storage/v1/object/public/videos/${videoUrl}`;
+  // Return the public URL
+  return `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
 };
 
-// Generate session-based token for video URL
-const generateSessionToken = (): string => {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  return `${timestamp}-${random}`;
-};
-
-// Function to get proper video URL based on source with session token
-const getVideoUrl = (videoUrl: string | null): { 
+// Function to get proper video URL based on source - SIMPLIFIED
+const getVideoInfo = (videoUrl: string | null): { 
   url: string | null; 
   type: 'youtube' | 'supabase' | 'direct' | 'unknown'; 
   videoId?: string | null;
-  sessionToken?: string;
 } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
   
+  // Try YouTube first
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
-    const sessionToken = generateSessionToken();
     return { 
-      url: `https://www.youtube-nocookie.com/embed/${youtubeId}`, 
+      url: `https://www.youtube.com/embed/${youtubeId}`, 
       type: 'youtube',
-      videoId: youtubeId,
-      sessionToken
+      videoId: youtubeId
     };
   }
   
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    const sessionToken = generateSessionToken();
-    return { 
-      url: `${videoUrl}?token=${sessionToken}`, 
-      type: 'direct',
-      sessionToken
-    };
-  }
-  
+  // Try Supabase
   const supabaseUrl = getPublicVideoUrl(videoUrl);
   if (supabaseUrl) {
-    const sessionToken = generateSessionToken();
     return { 
-      url: `${supabaseUrl}?token=${sessionToken}`, 
-      type: 'supabase',
-      sessionToken
+      url: supabaseUrl, 
+      type: 'supabase'
+    };
+  }
+  
+  // Direct URL
+  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+    return { 
+      url: videoUrl, 
+      type: 'direct'
     };
   }
   
   return { url: null, type: 'unknown' };
 };
 
-// Advanced YouTube Player with enhanced DOM manipulation and security
-const AdvancedYouTubePlayer: React.FC<{videoId: string; title: string; sessionToken?: string}> = ({videoId, title, sessionToken}) => {
+// SIMPLE YouTube Player Component - FIXED VERSION
+const SimpleYouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const observerRef = useRef<MutationObserver | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const scriptInjectionRef = useRef<boolean>(false);
-  const cleanupAttemptsRef = useRef<number>(0);
 
-  // Create the most private embed URL with maximum restrictions
-  const getPrivateEmbedUrl = () => {
+  const getEmbedUrl = () => {
+    // SIMPLE embed URL without complex parameters
     const params = new URLSearchParams({
-      'autoplay': '0',
-      'controls': '1',
-      'disablekb': '1', // Disable keyboard controls
-      'fs': '0', // Disable fullscreen
-      'modestbranding': '1',
       'rel': '0', // Don't show related videos
-      'showinfo': '0',
-      'iv_load_policy': '3', // Hide annotations
-      'cc_load_policy': '0', // No captions
-      'enablejsapi': '0', // Disable JS API
-      'origin': window.location.origin, // Domain lock
-      'widget_referrer': window.location.origin,
-      'autohide': '1',
-      'color': 'white',
-      'theme': 'dark',
-      'loop': '0',
-      'playsinline': '1',
-      'controlsList': 'nodownload nofullscreen noremoteplayback noplaybackrate',
-      'disablePictureInPicture': '1',
-      'playsInline': '1',
-      'preload': 'none',
-      'mute': '0',
-      'playlist': videoId,
-      'start': '0',
-      'end': '0',
-      'hl': 'en',
-      'cc_lang_pref': 'en',
-      'widgetid': '1',
-      'wmode': 'opaque',
-      'enablecastapi': '0',
-      'nocookie': '1'
+      'modestbranding': '1', // Minimal branding
+      'showinfo': '0', // Hide info
+      'controls': '1', // Show controls
+      'fs': '0' // Disable fullscreen
     });
 
-    // Add session token if provided
-    if (sessionToken) {
-      params.append('token', sessionToken);
-    }
-
-    return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-  };
-
-  // Enhanced CSS for YouTube branding removal
-  const injectBrandingRemovalCSS = () => {
-    const styleId = 'youtube-branding-remover-css-advanced-pro';
-    
-    // Remove existing style if any
-    const existingStyle = document.getElementById(styleId);
-    if (existingStyle) {
-      existingStyle.remove();
-    }
-    
-    // Create new style with comprehensive selectors
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.textContent = `
-      /* Hide ALL YouTube branding automatically - EXTENSIVE LIST */
-      .advanced-youtube-player iframe {
-        filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
-        -webkit-filter: contrast(1.1) brightness(1.05) saturate(1.1) !important;
-        pointer-events: auto !important;
-      }
-      
-      /* Target YouTube player container */
-      .advanced-youtube-player * {
-        -webkit-user-select: none !important;
-        -moz-user-select: none !important;
-        -ms-user-select: none !important;
-        user-select: none !important;
-        -webkit-touch-callout: none !important;
-      }
-      
-      /* COMPREHENSIVE YOUTUBE ELEMENT HIDING */
-      /* Title and channel elements - AGRESSIVE REMOVAL */
-      .ytp-title,
-      .ytp-title-text,
-      .ytp-title-link,
-      .ytp-title-channel,
-      .ytp-title-channel-name,
-      .ytp-title-subtext,
-      .ytp-title-expanded,
-      .ytp-title-collapsed,
-      .ytp-chrome-top .ytp-title,
-      [class*="title"][class*="ytp"],
-      .ytp-show-cards-title,
-      .ytp-ce-title,
-      .ytp-ce-channel-title,
-      .ytp-ce-playlist-title,
-      .ytp-chrome-top,
-      .ytp-shorts-title,
-      .ytp-panel-title {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-        font-size: 0 !important;
-        line-height: 0 !important;
-        overflow: hidden !important;
-      }
-      
-      /* Logo, watermark and branding - COMPLETE REMOVAL */
-      .ytp-logo,
-      .ytp-watermark,
-      .ytp-branding-logo,
-      .ytp-branding-icon,
-      .ytp-branding-name,
-      .ytp-branding,
-      .ytp-contextmenu-logo,
-      .yt-uix-button-icon-brand,
-      .ytp-chrome-header,
-      .ytp-button[aria-label*="YouTube"],
-      .ytp-button[title*="YouTube"],
-      .html5-video-player .ytp-branding,
-      .ytp-chrome-controls .ytp-button[aria-label*="YouTube"],
-      .ytp-copylink-button,
-      .ytp-share-button,
-      .ytp-cards-button,
-      .ytp-overflow-button,
-      .ytp-embed-logo,
-      .ytp-youtube-button,
-      .ytp-menuitem[aria-label*="YouTube"],
-      .ytp-settings-button[aria-label*="YouTube"],
-      .ytp-fullerscreen-edu-button,
-      .ytp-more-videos,
-      .ytp-pause-overlay,
-      .ytp-paid-content-overlay {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Suggested videos, cards, and related content - BLOCK ALL */
-      .ytp-ce-element,
-      .ytp-cards-button,
-      .ytp-pause-overlay,
-      .ytp-endscreen-content,
-      .html5-endscreen,
-      .ytp-suggested-action,
-      .ytp-related-video,
-      .ytp-videowall-still,
-      .ytp-ce-expanding-image,
-      .ytp-ce-channel,
-      .ytp-ce-playlist,
-      .ytp-ce-website,
-      .ytp-ce-video,
-      .ytp-ce-expanding-overlay,
-      .ytp-ce-text,
-      .ytp-ce-size-1920,
-      .ytp-ce-size-1920 *,
-      .ytp-autonav-endscreen-countdown-overlay,
-      .ytp-autonav-endscreen-upnext,
-      .ytp-autonav-endscreen-link-container,
-      .ytp-suggestion-link,
-      .ytp-tooltip.ytp-tooltip-text,
-      .ytp-tooltip.ytp-rounded-tooltip,
-      .ytp-tooltip.ytp-preview {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Keyboard and fullscreen controls - DISABLE */
-      .ytp-fullscreen-button,
-      .ytp-fullscreen-button:hover,
-      .ytp-fullscreen-button:focus,
-      .ytp-fullscreen-button:active {
-        display: none !important;
-        pointer-events: none !important;
-        cursor: not-allowed !important;
-      }
-      
-      /* Any element containing YouTube text - UNIVERSAL REMOVAL */
-      *:contains("YouTube"),
-      *:contains("you tube"),
-      *:contains("YT"),
-      *:contains("Youtube"),
-      *:contains("YOU TUBE"),
-      *:contains("youtu.be"),
-      *:contains("youtube.com") {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-        content: none !important;
-      }
-      
-      /* YouTube links - BLOCK ALL */
-      a[href*="youtube.com"],
-      a[href*="youtu.be"],
-      a[href*="youtube-nocookie.com"],
-      a[href*="youtube.googleapis.com"],
-      a[href*="googlevideo.com"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Classes and IDs containing ytp or youtube - AGGRESSIVE REMOVAL */
-      [class*="ytp"][class*="title"],
-      [class*="ytp"][class*="logo"],
-      [class*="ytp"][class*="branding"],
-      [class*="ytp"][class*="watermark"],
-      [class*="ytp"][class*="channel"],
-      [class*="youtube"][class*="logo"],
-      [class*="youtube"][class*="brand"],
-      [id*="ytp"],
-      [id*="youtube"],
-      [class*="ytp-"],
-      [class*="youtube-"] {
-        display: none !important;
-        opacity: 0 !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        position: absolute !important;
-        left: -9999px !important;
-        top: -9999px !important;
-        pointer-events: none !important;
-        z-index: -9999 !important;
-      }
-      
-      /* Additional YouTube UI elements - SELECTIVE REMOVAL */
-      .ytp-chrome-bottom,
-      .ytp-gradient-bottom,
-      .ytp-chrome-controls .ytp-right-controls,
-      .ytp-chrome-controls .ytp-left-controls,
-      .ytp-panel,
-      .ytp-popup,
-      .ytp-tooltip,
-      .ytp-menubar,
-      .ytp-settings-button,
-      .ytp-subtitles-button,
-      .ytp-volume-panel,
-      .ytp-time-display {
-        /* Keep only essential controls */
-      }
-      
-      /* Hide specific buttons */
-      .ytp-button[aria-label*="Full screen"],
-      .ytp-button[aria-label*="full screen"],
-      .ytp-button[aria-label*="Keyboard"],
-      .ytp-button[aria-label*="keyboard"],
-      .ytp-button[aria-label*="Settings"],
-      .ytp-button[aria-label*="settings"] {
-        opacity: 0.3 !important;
-        pointer-events: none !important;
-        cursor: not-allowed !important;
-      }
-      
-      /* Custom overlay to block interactions with hidden elements */
-      .youtube-protection-layer {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          to bottom,
-          transparent 0%,
-          transparent 20%,
-          transparent 80%,
-          transparent 100%
-        );
-        pointer-events: none;
-        z-index: 99999;
-        mix-blend-mode: multiply;
-      }
-      
-      /* Force iframe styling */
-      .advanced-youtube-player iframe {
-        isolation: isolate !important;
-        contain: strict !important;
-        -webkit-transform: translateZ(0) !important;
-        transform: translateZ(0) !important;
-        backface-visibility: hidden !important;
-        perspective: 1000 !important;
-      }
-      
-      /* Loading overlay */
-      .youtube-player-loading {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: #000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 100000;
-      }
-      
-      /* Domain lock overlay */
-      .domain-lock-overlay {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.7);
-        z-index: 100001;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-size: 14px;
-        text-align: center;
-        padding: 20px;
-        pointer-events: none;
-      }
-      
-      /* Disable right-click menu globally */
-      .advanced-youtube-player {
-        -webkit-touch-callout: none !important;
-        -webkit-user-select: none !important;
-        -khtml-user-select: none !important;
-        -moz-user-select: none !important;
-        -ms-user-select: none !important;
-        user-select: none !important;
-      }
-      
-      /* Block text selection */
-      .advanced-youtube-player ::selection {
-        background: transparent !important;
-        color: inherit !important;
-      }
-      
-      .advanced-youtube-player ::-moz-selection {
-        background: transparent !important;
-        color: inherit !important;
-      }
-    `;
-    
-    document.head.appendChild(style);
-    return styleId;
-  };
-
-  // Function to inject removal script into iframe
-  const injectRemovalScript = () => {
-    if (!iframeRef.current || !iframeRef.current.contentWindow || scriptInjectionRef.current) return;
-    
-    try {
-      const iframeDoc = iframeRef.current.contentWindow.document;
-      
-      // Create script to remove YouTube branding
-      const removalScript = `
-        // Function to remove YouTube branding
-        function removeYouTubeBranding() {
-          // Remove title elements
-          const titleSelectors = [
-            '.ytp-title-text',
-            '.ytp-title-link',
-            '.ytp-title-channel',
-            '.ytp-title-channel-name',
-            '.ytp-title-subtext',
-            '.ytp-title-expanded',
-            '.ytp-title-collapsed',
-            '[class*="title"][class*="ytp"]',
-            '.ytp-chrome-top',
-            '.ytp-show-cards-title'
-          ];
-          
-          titleSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove logo and watermark
-          const logoSelectors = [
-            '.ytp-logo',
-            '.ytp-watermark',
-            '.ytp-branding-logo',
-            '.ytp-branding-icon',
-            '.ytp-branding-name',
-            '.ytp-branding',
-            '.ytp-contextmenu-logo',
-            '.yt-uix-button-icon-brand',
-            '.ytp-chrome-header',
-            '.ytp-chrome-controls .ytp-button[aria-label*="YouTube"]'
-          ];
-          
-          logoSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove suggested videos and cards
-          const suggestionSelectors = [
-            '.ytp-ce-element',
-            '.ytp-cards-button',
-            '.ytp-pause-overlay',
-            '.ytp-endscreen-content',
-            '.html5-endscreen',
-            '.ytp-suggested-action',
-            '.ytp-related-video',
-            '.ytp-videowall-still',
-            '.ytp-ce-expanding-image',
-            '.ytp-ce-channel',
-            '.ytp-ce-playlist',
-            '.ytp-ce-website',
-            '.ytp-ce-video',
-            '.ytp-ce-expanding-overlay'
-          ];
-          
-          suggestionSelectors.forEach(selector => {
-            const elements = document.querySelectorAll(selector);
-            elements.forEach(el => {
-              if (el && el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-          });
-          
-          // Remove any element containing YouTube text
-          const allElements = document.querySelectorAll('*');
-          allElements.forEach(el => {
-            if (el.textContent && (
-              el.textContent.toLowerCase().includes('youtube') ||
-              el.textContent.toLowerCase().includes('you tube') ||
-              el.textContent.toLowerCase().includes('yt-be')
-            )) {
-              if (el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            }
-            
-            // Remove YouTube links
-            if (el.tagName === 'A' && el.getAttribute('href')) {
-              const href = el.getAttribute('href') || '';
-              if (href.includes('youtube.com') || href.includes('youtu.be')) {
-                if (el.parentNode) {
-                  el.parentNode.removeChild(el);
-                }
-              }
-            }
-          });
-          
-          // Remove specific YouTube-related attributes and classes
-          const ytElements = document.querySelectorAll('[class*="ytp"], [class*="youtube"], [id*="ytp"], [id*="youtube"]');
-          ytElements.forEach(el => {
-            if (el.parentNode) {
-              const className = el.className || '';
-              if (!className.includes('html5-video-player') && 
-                  !className.includes('html5-main-video')) {
-                el.parentNode.removeChild(el);
-              }
-            }
-          });
-          
-          // Disable fullscreen button
-          const fullscreenButtons = document.querySelectorAll('.ytp-fullscreen-button, [aria-label*="Full screen"], [aria-label*="full screen"]');
-          fullscreenButtons.forEach(button => {
-            button.style.display = 'none';
-            button.style.pointerEvents = 'none';
-            button.style.cursor = 'not-allowed';
-          });
-          
-          // Disable keyboard controls
-          document.addEventListener('keydown', function(e) {
-            // Block common video control keys
-            const blockedKeys = [32, 37, 39, 75, 74, 76, 70]; // Space, arrows, K, J, L, F
-            if (blockedKeys.includes(e.keyCode)) {
-              e.preventDefault();
-              e.stopPropagation();
-              return false;
-            }
-          }, true);
-          
-          // Block context menu
-          document.addEventListener('contextmenu', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-          }, true);
-          
-          // Block drag and drop
-          document.addEventListener('dragstart', function(e) {
-            e.preventDefault();
-            return false;
-          }, true);
-        }
-        
-        // Run removal on load and periodically
-        removeYouTubeBranding();
-        
-        // Monitor DOM changes
-        const observer = new MutationObserver(function(mutations) {
-          mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' || mutation.type === 'subtree') {
-              removeYouTubeBranding();
-            }
-          });
-        });
-        
-        observer.observe(document.body, {
-          childList: true,
-          subtree: true,
-          attributes: true,
-          characterData: true,
-          attributeFilter: ['class', 'style', 'aria-label']
-        });
-        
-        // Also remove on various events
-        ['load', 'DOMContentLoaded', 'click', 'mouseover', 'keydown', 'focus'].forEach(event => {
-          window.addEventListener(event, removeYouTubeBranding, true);
-        });
-        
-        // Set up periodic cleanup
-        const cleanupInterval = setInterval(removeYouTubeBranding, 500);
-        
-        // Store interval for cleanup
-        window.youtubeCleanupInterval = cleanupInterval;
-      `;
-      
-      // Create and inject the script
-      const script = iframeDoc.createElement('script');
-      script.textContent = removalScript;
-      iframeDoc.head.appendChild(script);
-      
-      scriptInjectionRef.current = true;
-      
-    } catch (error) {
-      // Cross-origin restriction - we'll use CSS approach instead
-    }
-  };
-
-  // Enhanced removal function using postMessage
-  const enhancedBrandingRemoval = () => {
-    if (!iframeRef.current || !iframeRef.current.contentWindow) return;
-    
-    // Try to inject script via postMessage (if iframe allows)
-    try {
-      iframeRef.current.contentWindow.postMessage({
-        type: 'REMOVE_YOUTUBE_BRANDING',
-        selectors: [
-          '.ytp-title',
-          '.ytp-title-text',
-          '.ytp-title-link',
-          '.ytp-title-channel',
-          '.ytp-logo',
-          '.ytp-watermark',
-          '.ytp-branding',
-          '.ytp-pause-overlay',
-          '.ytp-ce-element',
-          '.ytp-fullscreen-button'
-        ]
-      }, '*');
-    } catch (error) {
-      // Silently fail if postMessage not allowed
-    }
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
   };
 
   const handleIframeLoad = () => {
     setIsLoaded(true);
-    const styleId = injectBrandingRemovalCSS();
-    
-    // Try to inject removal script into iframe
-    setTimeout(() => {
-      injectRemovalScript();
-    }, 1000);
-    
-    // Start interval to continuously try to remove YouTube branding
-    intervalRef.current = setInterval(() => {
-      enhancedBrandingRemoval();
-      
-      // Also try to manipulate iframe via postMessage periodically
-      if (iframeRef.current && iframeRef.current.contentWindow) {
-        try {
-          iframeRef.current.contentWindow.postMessage({
-            type: 'HIDE_YOUTUBE_ELEMENTS',
-            timestamp: Date.now(),
-            domain: window.location.origin
-          }, '*');
-        } catch (e) {
-          // Ignore errors
-        }
-      }
-      
-      // Increment cleanup attempts
-      cleanupAttemptsRef.current += 1;
-      
-      // Stop after reasonable attempts
-      if (cleanupAttemptsRef.current > 20 && intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }, 500);
-    
-    // Additional cleanup attempts
-    setTimeout(() => {
-      enhancedBrandingRemoval();
-    }, 2000);
-    
-    setTimeout(() => {
-      enhancedBrandingRemoval();
-      setPlayerReady(true);
-    }, 3000);
-    
-    setTimeout(() => {
-      enhancedBrandingRemoval();
-    }, 5000);
+    setError(null);
   };
 
-  // Prevent context menu and copying
-  useEffect(() => {
-    const preventActions = (e: Event) => {
-      e.preventDefault();
-      e.stopPropagation();
-      return false;
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('contextmenu', preventActions);
-      container.addEventListener('copy', preventActions);
-      container.addEventListener('cut', preventActions);
-      container.addEventListener('dragstart', preventActions);
-      container.addEventListener('selectstart', preventActions);
-    }
-
-    // Block keyboard shortcuts globally
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Block F for fullscreen, Space for play/pause, arrows for seek
-      const blockedKeys = [32, 70, 37, 39, 75, 74, 76]; // Space, F, Left, Right, K, J, L
-      if (blockedKeys.includes(e.keyCode) && container?.contains(e.target as Node)) {
-        e.preventDefault();
-        e.stopPropagation();
-        return false;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-
-    // Listen for messages from iframe (if it sends any)
-    const handleMessage = (event: MessageEvent) => {
-      // Block any attempts to open external windows
-      if (event.data && typeof event.data === 'object') {
-        if (event.data.type === 'OPEN_EXTERNAL') {
-          event.preventDefault();
-          return false;
-        }
-      }
-    };
-    
-    window.addEventListener('message', handleMessage);
-
-    // Cleanup
-    return () => {
-      if (container) {
-        container.removeEventListener('contextmenu', preventActions);
-        container.removeEventListener('copy', preventActions);
-        container.removeEventListener('cut', preventActions);
-        container.removeEventListener('dragstart', preventActions);
-        container.removeEventListener('selectstart', preventActions);
-      }
-      
-      document.removeEventListener('keydown', handleKeyDown, true);
-      window.removeEventListener('message', handleMessage);
-      
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-      
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      
-      // Remove injected CSS
-      const style = document.getElementById('youtube-branding-remover-css-advanced-pro');
-      if (style) {
-        style.remove();
-      }
-    };
-  }, []);
+  const handleIframeError = () => {
+    setError("Failed to load YouTube video");
+    setIsLoaded(false);
+  };
 
   return (
-    <div ref={containerRef} className="advanced-youtube-player relative w-full h-full bg-black overflow-hidden">
-      {!isLoaded && (
-        <div className="youtube-player-loading">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-lg">Loading secure video player...</p>
+    <div className="relative w-full h-full bg-black overflow-hidden rounded-lg">
+      {!isLoaded && !error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white">Loading YouTube video...</p>
           </div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+          <p className="text-white text-lg font-semibold mb-2">Video Error</p>
+          <p className="text-gray-300 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              if (iframeRef.current) {
+                iframeRef.current.src = getEmbedUrl();
+              }
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
+          >
+            Retry
+          </button>
         </div>
       )}
       
       <iframe
         ref={iframeRef}
-        src={getPrivateEmbedUrl()}
+        src={getEmbedUrl()}
         title={title}
         className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
         frameBorder="0"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen={false}
         referrerPolicy="no-referrer"
-        sandbox="allow-same-origin allow-scripts"
         loading="lazy"
         onLoad={handleIframeLoad}
+        onError={handleIframeError}
         style={{
           backgroundColor: '#000',
-          pointerEvents: 'auto',
         }}
-        scrolling="no"
-        marginWidth="0"
-        marginHeight="0"
-        allowTransparency={true}
       />
       
-      {/* Multiple protection layers */}
-      <div className="youtube-protection-layer"></div>
-      
-      {/* Domain lock overlay */}
-      <div className="domain-lock-overlay">
-        <div>
-          <p>Secure Video Player</p>
-          <p className="text-sm opacity-75">Domain locked to: {window.location.hostname}</p>
-        </div>
-      </div>
-      
-      {/* Additional transparent overlay for blocking right-click */}
-      <div 
-        className="absolute inset-0 z-[100000] cursor-default"
-        onContextMenu={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          return false;
-        }}
-        onClick={(e) => e.stopPropagation()}
-        onDoubleClick={(e) => e.preventDefault()}
-        onDragStart={(e) => e.preventDefault()}
-        style={{ 
-          pointerEvents: 'none',
-          userSelect: 'none',
-          WebkitUserSelect: 'none',
-          MozUserSelect: 'none',
-          msUserSelect: 'none',
-          WebkitTouchCallout: 'none'
-        }}
-      ></div>
-      
-      {/* Fallback message for strict environments */}
-      <div className="absolute bottom-2 right-2 text-xs text-gray-500 opacity-50 z-[100001]">
-        Secure Player Mode • Domain Locked
-      </div>
-      
-      {!playerReady && (
-        <div className="absolute top-2 left-2 text-xs text-yellow-500 opacity-75 z-[100001]">
-          Initializing security layers...
+      {isLoaded && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+          <p className="text-white text-sm font-medium">{title}</p>
+          <p className="text-gray-300 text-xs">YouTube Video Player</p>
         </div>
       )}
     </div>
   );
 };
 
-// Unified Video Player Component
+// Unified Video Player Component - SIMPLIFIED
 const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> = ({videoUrl, title}) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  const videoInfo = getVideoUrl(videoUrl);
+  const videoInfo = getVideoInfo(videoUrl);
 
   useEffect(() => {
     setIsLoading(true);
@@ -1125,10 +410,9 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
   if (videoInfo.type === 'youtube' && videoInfo.videoId) {
     return (
       <div className="w-full h-full">
-        <AdvancedYouTubePlayer 
+        <SimpleYouTubePlayer 
           videoId={videoInfo.videoId} 
           title={title}
-          sessionToken={videoInfo.sessionToken}
         />
       </div>
     );
@@ -1171,15 +455,13 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
           title={title}
           className="absolute inset-0 w-full h-full"
           controls
-          controlsList="nodownload noplaybackrate nofullscreen"
+          controlsList="nodownload noplaybackrate"
           playsInline
           preload="metadata"
           onLoadedData={handleVideoLoad}
           onCanPlay={handleVideoLoad}
           onError={handleVideoError}
           onContextMenu={handleVideoContextMenu}
-          disablePictureInPicture
-          disableRemotePlayback
         >
           Your browser does not support the video tag.
         </video>
@@ -1187,16 +469,8 @@ const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> =
       
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
         <p className="text-white text-sm font-medium">{title}</p>
-        <p className="text-gray-300 text-xs">Platform Video Player • Session Protected</p>
+        <p className="text-gray-300 text-xs">Platform Video Player</p>
       </div>
-      
-      {/* Security overlay */}
-      <div 
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: 'linear-gradient(to bottom, transparent 0%, transparent 95%, rgba(0,0,0,0.3) 100%)'
-        }}
-      />
     </div>
   );
 };
