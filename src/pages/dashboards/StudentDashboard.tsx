@@ -24,6 +24,7 @@ import {
   AlertCircle,
   Video,
   Lock,
+  Shield,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
@@ -164,34 +165,41 @@ interface ExamResult {
 
 // === YouTube Security Configuration ===
 const YOUTUBE_SECURITY_CONFIG = {
-  // Secret key for URL signing (should be stored in env in production)
   URL_SECRET: process.env.REACT_APP_VIDEO_SECRET || 'your-secret-key-here-change-in-production',
-  
-  // Session expiration in seconds (1 hour)
   SESSION_EXPIRY: 3600,
-  
-  // Allowed domains (only our domain can play videos)
   ALLOWED_DOMAINS: [
     window.location.hostname,
     'localhost',
     '127.0.0.1'
   ],
-  
-  // YouTube player parameters for maximum security
   PLAYER_PARAMS: {
-    controls: 1,                    // Show controls but customize them
-    disablekb: 1,                   // Disable keyboard controls
-    fs: 0,                          // Disable fullscreen button
-    modestbranding: 1,              // Hide YouTube logo
-    rel: 0,                         // Don't show related videos
-    showinfo: 0,                    // Don't show video info
-    iv_load_policy: 3,              // Don't show annotations
-    playsinline: 1,                 // Play inline on iOS
-    enablejsapi: 1,                 // Enable JavaScript API for more control
-    origin: window.location.origin, // Lock to our origin
-    widget_referrer: window.location.origin, // Referrer for security
-    autoplay: 0,                    // Don't autoplay
-    cc_load_policy: 0,              // No captions by default
+    controls: 1,
+    disablekb: 1,
+    fs: 0,
+    modestbranding: 1,
+    rel: 0,
+    showinfo: 0,
+    iv_load_policy: 3,
+    playsinline: 1,
+    enablejsapi: 1,
+    origin: window.location.origin,
+    widget_referrer: window.location.origin,
+    autoplay: 0,
+    cc_load_policy: 0,
+    hl: 'en',
+    color: 'white',
+    theme: 'dark',
+    start: 0,
+    end: 0,
+    loop: 0,
+    playlist: '',
+    mute: 0,
+    cc_lang_pref: 'en',
+    cc_load_policy: 0,
+    controlslist: 'nodownload noplaybackrate noremoteplayback',
+    disablepictureinpicture: 1,
+    allow: 'accelerometer; encrypted-media; gyroscope; picture-in-picture',
+    allowfullscreen: '',
   }
 };
 
@@ -214,40 +222,56 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [playerError, setPlayerError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [playerInstance, setPlayerInstance] = useState<any>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [volume, setVolume] = useState(50);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [securityStatus, setSecurityStatus] = useState<'checking' | 'secure' | 'failed'>('checking');
 
   // Generate secure signed URL with timestamp and signature
-  const generateSecureEmbedUrl = () => {
+  const generateSecureEmbedUrl = (): string => {
     const timestamp = Math.floor(Date.now() / 1000);
     const expiry = timestamp + YOUTUBE_SECURITY_CONFIG.SESSION_EXPIRY;
     
-    // Create data payload
     const payload = {
       v: videoId,
       t: timestamp,
       e: expiry,
       u: userId,
       vid: videoRecordId,
-      d: window.location.hostname
+      d: window.location.hostname,
+      ref: document.referrer || 'direct'
     };
     
-    // Create signature
     const dataString = JSON.stringify(payload);
     const signature = CryptoJS.HmacSHA256(dataString, YOUTUBE_SECURITY_CONFIG.URL_SECRET).toString();
     
-    // Base parameters
     const baseParams = new URLSearchParams({
       ...YOUTUBE_SECURITY_CONFIG.PLAYER_PARAMS,
       enablejsapi: '1',
       origin: window.location.origin,
       widget_referrer: window.location.origin,
       autoplay: '0',
+      playsinline: '1',
+      rel: '0',
+      modestbranding: '1',
+      controls: '1',
+      showinfo: '0',
+      iv_load_policy: '3',
+      disablekb: '1',
+      fs: '0',
+      cc_load_policy: '0',
+      color: 'white',
+      theme: 'dark',
+      hl: 'en',
+      mute: '0',
+      loop: '0',
+      start: '0',
+      end: '0',
     } as any).toString();
     
-    // Add encrypted session data as fragment
     const encryptedData = CryptoJS.AES.encrypt(
       JSON.stringify({ payload, signature }),
       YOUTUBE_SECURITY_CONFIG.URL_SECRET
@@ -259,12 +283,16 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
   // Validate session on backend (simulated)
   const validateSession = async (): Promise<boolean> => {
     try {
-      // In a real app, you would make an API call to validate the session
-      // For now, we'll simulate validation
       const isValid = YOUTUBE_SECURITY_CONFIG.ALLOWED_DOMAINS.includes(window.location.hostname);
       
       if (!isValid) {
         console.warn('Domain not allowed:', window.location.hostname);
+        return false;
+      }
+      
+      // Check for iframe embedding attempts
+      if (window.self !== window.top) {
+        console.warn('Embedding attempt detected');
         return false;
       }
       
@@ -280,12 +308,22 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
     if (!window.YT) {
       const tag = document.createElement('script');
       tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
-      
-      (window as any).onYouTubeIframeAPIReady = () => {
-        createPlayer();
+      tag.async = true;
+      tag.defer = true;
+      tag.onload = () => {
+        if ((window as any).YT && (window as any).YT.Player) {
+          createPlayer();
+        }
       };
+      document.head.appendChild(tag);
+      
+      // Fallback timeout
+      setTimeout(() => {
+        if (!window.YT) {
+          console.error('YouTube API failed to load');
+          setPlayerError('Failed to load video player. Please refresh the page.');
+        }
+      }, 5000);
     } else {
       createPlayer();
     }
@@ -295,63 +333,249 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const createPlayer = () => {
     if (!iframeRef.current) return;
     
-    const player = new (window as any).YT.Player(iframeRef.current, {
-      events: {
-        onReady: (event: any) => {
-          setIsLoaded(true);
-          setPlayerInstance(event.target);
-          
-          // Disable certain features via postMessage
-          disableYouTubeFeatures();
-          
-          // Start tracking playback
-          startPlaybackTracking();
+    try {
+      const player = new (window as any).YT.Player(iframeRef.current, {
+        height: '100%',
+        width: '100%',
+        videoId: videoId,
+        playerVars: {
+          ...YOUTUBE_SECURITY_CONFIG.PLAYER_PARAMS,
+          enablejsapi: 1,
+          origin: window.location.origin,
+          widget_referrer: window.location.origin,
         },
-        onStateChange: (event: any) => {
-          // 1: playing, 2: paused, 3: buffering, 0: ended
-          if (event.data === 1) {
-            setIsPlaying(true);
-          } else if (event.data === 2 || event.data === 0) {
-            setIsPlaying(false);
+        events: {
+          onReady: (event: any) => {
+            setIsLoaded(true);
+            setSecurityStatus('secure');
+            setPlayerInstance(event.target);
+            
+            // Disable YouTube features
+            disableYouTubeFeatures();
+            
+            // Start tracking playback
+            startPlaybackTracking();
+            
+            // Set initial volume
+            event.target.setVolume(volume);
+            
+            // Block external interactions
+            blockExternalInteractions();
+          },
+          onStateChange: (event: any) => {
+            if (event.data === 1) {
+              setIsPlaying(true);
+            } else if (event.data === 2 || event.data === 0) {
+              setIsPlaying(false);
+            }
+            
+            // Additional security checks during playback
+            if (event.data === 1) {
+              monitorPlaybackSecurity();
+            }
+          },
+          onError: (event: any) => {
+            console.error('YouTube player error:', event.data);
+            setPlayerError('Failed to load video. Please try again.');
+            setSecurityStatus('failed');
+          },
+          onPlaybackQualityChange: (event: any) => {
+            console.log('Playback quality changed:', event.data);
+          },
+          onPlaybackRateChange: (event: any) => {
+            console.log('Playback rate changed:', event.data);
           }
-        },
-        onError: (event: any) => {
-          console.error('YouTube player error:', event.data);
-          setPlayerError('Failed to load video. Please try again.');
         }
-      }
-    });
-    
-    setPlayerInstance(player);
+      });
+      
+      setPlayerInstance(player);
+    } catch (error) {
+      console.error('Error creating YouTube player:', error);
+      setPlayerError('Failed to initialize video player.');
+      setSecurityStatus('failed');
+    }
   };
 
-  // Disable unwanted YouTube features
+  // Disable ALL YouTube features
   const disableYouTubeFeatures = () => {
     const iframe = iframeRef.current;
     if (!iframe) return;
 
-    // Disable right-click context menu
-    iframe.addEventListener('contextmenu', (e) => {
+    // Comprehensive event blocking
+    const blockEvent = (e: Event) => {
       e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
       return false;
-    });
+    };
 
-    // Prevent drag-and-drop
+    // Block all context menus
+    iframe.addEventListener('contextmenu', blockEvent, true);
+    
+    // Block all right-click attempts
+    iframe.addEventListener('mousedown', (e) => {
+      if (e.button === 2) {
+        blockEvent(e);
+        toast.error('Right-click is disabled for security');
+      }
+    }, true);
+
+    // Prevent drag and drop
+    iframe.addEventListener('dragstart', blockEvent, true);
+    iframe.addEventListener('drop', blockEvent, true);
     iframe.setAttribute('draggable', 'false');
 
-    // Disable certain keyboard shortcuts
+    // Block keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-      if (document.activeElement === iframe) {
-        // Prevent fullscreen with F11
-        if (e.key === 'F11') {
+      if (document.activeElement === iframe || document.activeElement?.contains(iframe)) {
+        // Block YouTube-specific shortcuts
+        const blockedKeys = [
+          'F', 'f', // Fullscreen
+          'K', 'k', // Play/Pause
+          'M', 'm', // Mute
+          'J', 'j', // Rewind
+          'L', 'l', // Forward
+          'I', 'i', // Miniplayer
+          'C', 'c', // Captions
+          'F11',    // Browser fullscreen
+          'Escape', // Exit fullscreen
+        ];
+        
+        if (blockedKeys.includes(e.key)) {
           e.preventDefault();
-        }
-        // Prevent escape from fullscreen
-        if (e.key === 'Escape' && document.fullscreenElement) {
-          e.preventDefault();
+          e.stopPropagation();
+          
+          // Show custom message for some keys
+          if (e.key.toLowerCase() === 'f') {
+            toast.error('Fullscreen is disabled for security');
+          }
         }
       }
+    }, true);
+
+    // Block fullscreen requests
+    document.addEventListener('fullscreenchange', () => {
+      if (document.fullscreenElement === iframe) {
+        document.exitFullscreen().catch(() => {});
+        toast.error('Fullscreen is disabled for security');
+      }
     });
+
+    // Block pointer lock
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement === iframe) {
+        document.exitPointerLock();
+      }
+    });
+
+    // Block picture-in-picture
+    if (document.pictureInPictureElement === iframe) {
+      document.exitPictureInPicture();
+    }
+
+    // MutationObserver to detect and remove YouTube elements
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList' && iframe.contentDocument) {
+          // Remove YouTube branding elements
+          const youtubeElements = iframe.contentDocument.querySelectorAll(
+            '.ytp-chrome-top, .ytp-title, .ytp-watermark, ' +
+            '.ytp-share-button, .ytp-youtube-button, ' +
+            '.ytp-chrome-top-buttons, .ytp-panel-title, ' +
+            '.ytp-panel-menu, .ytp-settings-button, ' +
+            '[aria-label*="YouTube"], [title*="YouTube"], ' +
+            '.ytp-ce-element, .ytp-videowall-still, ' +
+            '.ytp-endscreen-content, .ytp-cards-button, ' +
+            '.ytp-live-badge, .ytp-watch-later-button, ' +
+            '.ytp-share-panel, .ytp-copylink-button'
+          );
+          
+          youtubeElements.forEach(el => {
+            (el as HTMLElement).style.cssText = `
+              display: none !important;
+              visibility: hidden !important;
+              opacity: 0 !important;
+              pointer-events: none !important;
+              position: absolute !important;
+              left: -9999px !important;
+            `;
+            
+            // Remove event listeners
+            const clone = el.cloneNode(false);
+            el.parentNode?.replaceChild(clone, el);
+          });
+        }
+      });
+    });
+
+    // Start observing when iframe content loads
+    iframe.addEventListener('load', () => {
+      setTimeout(() => {
+        if (iframe.contentDocument) {
+          observer.observe(iframe.contentDocument, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true
+          });
+        }
+      }, 1000);
+    });
+  };
+
+  // Block external interactions
+  const blockExternalInteractions = () => {
+    // Block iframe from opening new windows
+    window.addEventListener('blur', () => {
+      if (document.activeElement === iframeRef.current) {
+        window.focus();
+      }
+    });
+
+    // Block message events from YouTube
+    window.addEventListener('message', (event) => {
+      if (event.source === iframeRef.current?.contentWindow) {
+        // Block YouTube's postMessage events
+        if (event.data && typeof event.data === 'string') {
+          if (event.data.includes('yt://') || 
+              event.data.includes('youtube://') ||
+              event.data.includes('https://www.youtube.com/') ||
+              event.data.includes('https://youtube.com/')) {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          }
+        }
+      }
+    }, true);
+  };
+
+  // Monitor playback security
+  const monitorPlaybackSecurity = () => {
+    // Check for unauthorized access attempts
+    const checkSecurity = () => {
+      if (!iframeRef.current) return;
+      
+      // Check if iframe still has our origin
+      try {
+        const iframeOrigin = iframeRef.current.contentWindow?.location.origin;
+        if (iframeOrigin && !iframeOrigin.includes(window.location.origin)) {
+          console.warn('Suspicious iframe origin detected:', iframeOrigin);
+          setPlayerError('Security violation detected. Video playback stopped.');
+          setSecurityStatus('failed');
+          
+          if (playerInstance && playerInstance.pauseVideo) {
+            playerInstance.pauseVideo();
+          }
+        }
+      } catch (error) {
+        // Cross-origin access blocked - this is good
+      }
+    };
+    
+    // Run security check every 10 seconds during playback
+    const securityInterval = setInterval(checkSecurity, 10000);
+    
+    return () => clearInterval(securityInterval);
   };
 
   // Track playback time
@@ -366,8 +590,8 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
           const time = playerInstance.getCurrentTime();
           setCurrentTime(time);
           
-          // Log playback for analytics (optional)
-          if (Math.floor(time) % 30 === 0) { // Every 30 seconds
+          // Log playback for analytics (every 30 seconds)
+          if (Math.floor(time) % 30 === 0 && Math.floor(time) > 0) {
             logPlaybackEvent(time);
           }
         } catch (error) {
@@ -380,8 +604,14 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
   // Log playback events
   const logPlaybackEvent = async (time: number) => {
     try {
-      // You can send this to your backend for analytics
-      console.log('Playback tracking:', { videoId, userId, time });
+      // Send to backend for analytics
+      await supabase.from('video_playback_logs').insert({
+        video_id: videoRecordId,
+        user_id: userId,
+        playback_time: time,
+        timestamp: new Date().toISOString(),
+        session_token: sessionToken
+      }).catch(() => {});
     } catch (error) {
       // Silent fail for analytics
     }
@@ -391,22 +621,60 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
   const handlePlayPause = () => {
     if (!playerInstance) return;
     
-    if (isPlaying) {
-      playerInstance.pauseVideo();
-    } else {
-      playerInstance.playVideo();
+    try {
+      if (isPlaying) {
+        playerInstance.pauseVideo();
+      } else {
+        playerInstance.playVideo();
+      }
+    } catch (error) {
+      console.error('Error controlling playback:', error);
+      toast.error('Unable to control playback');
     }
   };
 
   // Handle seek
   const handleSeek = (seconds: number) => {
     if (!playerInstance) return;
-    playerInstance.seekTo(seconds, true);
+    
+    try {
+      const newTime = Math.max(0, currentTime + seconds);
+      playerInstance.seekTo(newTime, true);
+      setCurrentTime(newTime);
+    } catch (error) {
+      console.error('Error seeking:', error);
+    }
+  };
+
+  // Handle volume change
+  const handleVolumeChange = (newVolume: number) => {
+    if (!playerInstance) return;
+    
+    try {
+      playerInstance.setVolume(newVolume);
+      setVolume(newVolume);
+    } catch (error) {
+      console.error('Error changing volume:', error);
+    }
+  };
+
+  // Get formatted time
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   // Cleanup
   useEffect(() => {
-    initYouTubeAPI();
+    validateSession().then(isValid => {
+      if (!isValid) {
+        setPlayerError('Video playback is not allowed from this domain.');
+        setSecurityStatus('failed');
+      } else {
+        initYouTubeAPI();
+      }
+    });
     
     return () => {
       if (intervalRef.current) {
@@ -414,220 +682,682 @@ const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({
       }
       
       if (playerInstance && playerInstance.destroy) {
-        playerInstance.destroy();
+        try {
+          playerInstance.destroy();
+        } catch (error) {
+          console.error('Error destroying player:', error);
+        }
       }
     };
   }, []);
 
-  // Validate session on mount
-  useEffect(() => {
-    validateSession().then(isValid => {
-      if (!isValid) {
-        setPlayerError('Video playback is not allowed from this domain.');
-      }
-    });
-  }, []);
-
-  // === CSS to hide YouTube elements ===
+  // === Comprehensive CSS to hide ALL YouTube elements ===
   const playerStyles = `
-    .secure-youtube-player {
+    .secure-youtube-container {
       position: relative;
       width: 100%;
       height: 100%;
       background: #000;
+      overflow: hidden;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
-    .secure-youtube-player iframe {
-      width: 100%;
-      height: 100%;
-      border: none;
+    .secure-youtube-container iframe {
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      z-index: 1 !important;
     }
     
-    /* Hide YouTube logo */
-    .ytp-chrome-top .ytp-title-channel-logo,
-    .ytp-title-link.yt-uix-sessionlink,
-    .ytp-watermark {
-      display: none !important;
-      opacity: 0 !important;
-      visibility: hidden !important;
-    }
+    /* === COMPREHENSIVE YOUTUBE ELEMENT HIDING === */
     
-    /* Hide related videos at end */
-    .ytp-endscreen-content,
-    .ytp-videowall-still,
-    .ytp-ce-element {
-      display: none !important;
-    }
-    
-    /* Hide YouTube brand elements */
-    .ytp-show-cards-title,
+    /* Hide ALL YouTube branding and controls */
+    .ytp-chrome-top,
+    .ytp-title-channel,
+    .ytp-title-link,
     .ytp-title-text,
-    .ytp-title-subtitle {
-      display: none !important;
-    }
-    
-    /* Hide menu buttons */
+    .ytp-title-subtitle,
+    .ytp-watermark,
+    .ytp-youtube-button,
+    .ytp-share-button,
+    .ytp-watch-later-button,
+    .ytp-cards-button,
+    .ytp-copylink-button,
+    .ytp-share-panel,
+    .ytp-panel-title,
+    .ytp-panel-menu,
     .ytp-settings-button,
-    .ytp-button.ytp-youtube-button,
-    .ytp-chrome-top-buttons .ytp-button[aria-label*="YouTube"] {
+    .ytp-live-badge,
+    .ytp-chrome-top-buttons,
+    .ytp-chrome-bottom,
+    .ytp-progress-bar-container,
+    .ytp-time-display,
+    .ytp-volume-panel,
+    .ytp-play-button,
+    .ytp-next-button,
+    .ytp-prev-button,
+    .ytp-fullscreen-button,
+    .ytp-miniplayer-button,
+    .ytp-size-button,
+    .ytp-remote-button,
+    .ytp-chapter-title,
+    .ytp-ce-element,
+    .ytp-videowall-still,
+    .ytp-endscreen-content,
+    .ytp-endscreen-next,
+    .ytp-endscreen-previous,
+    .ytp-caption-window,
+    .ytp-caption-segment,
+    .ytp-caption-container,
+    .ytp-caption-window-rollup,
+    .ytp-ad-overlay-container,
+    .ytp-ad-text-overlay,
+    .ytp-ad-image-overlay,
+    .ytp-ad-skip-button,
+    .ytp-ad-skip-button-container,
+    .ytp-paid-content-overlay,
+    .ytp-paid-content-overlay-text,
+    .ytp-paid-content-overlay-link,
+    .ytp-suggested-action,
+    .ytp-tooltip,
+    .ytp-tooltip-text,
+    .ytp-tooltip-bg,
+    .ytp-menuitem,
+    .ytp-menuitem-label,
+    .ytp-menuitem-content,
+    .ytp-panel,
+    .ytp-panel-menu,
+    .ytp-popup,
+    .ytp-contextmenu,
+    .ytp-contextmenu-wrapper,
+    .ytp-sb,
+    .ytp-sb-base,
+    .ytp-sb-subscribe,
+    .ytp-sb-unsubscribe,
+    .ytp-multicam-menu,
+    .ytp-multicam-menu-items,
+    .ytp-multicam-menu-item,
+    .ytp-heat-map,
+    .ytp-heat-map-container,
+    .ytp-heat-map-chapter,
+    .ytp-heat-map-play-rate,
+    .ytp-storyboard,
+    .ytp-storyboard-frames,
+    .ytp-storyboard-frame,
+    .ytp-spinner,
+    .ytp-spinner-container,
+    .ytp-spinner-circle,
+    .ytp-spinner-logo,
+    .ytp-loading-icon,
+    .ytp-error,
+    .ytp-error-content,
+    .ytp-pause-overlay,
+    .ytp-pause-overlay-container,
+    .ytp-expand-pause-overlay,
+    .ytp-cued-thumbnail-overlay,
+    .ytp-cued-thumbnail-overlay-image,
+    .ytp-autonav-endscreen,
+    .ytp-autonav-endscreen-countdown-container,
+    .ytp-autonav-endscreen-upnext-title,
+    .ytp-autonav-endscreen-upnext-author,
+    .ytp-autonav-toggle-button,
+    .ytp-autonav-toggle-button-container,
+    .ytp-player-content,
+    .ytp-player-video-content,
+    .ytp-large-play-button,
+    .ytp-large-play-button-bg,
+    .ytp-title-enable-channel-logo,
+    .ytp-title-channel-logo,
+    .ytp-title-beacon,
+    .ytp-title-hover,
+    .ytp-title-chevron,
+    .ytp-mix-playlist,
+    .ytp-mix-playlist-container,
+    .ytp-mix-playlist-header,
+    .ytp-mix-playlist-items,
+    .ytp-mix-playlist-item,
+    .ytp-mix-playlist-autoplay,
+    .ytp-mix-playlist-upnext,
+    .ytp-mix-playlist-upnext-title,
+    .ytp-mix-playlist-upnext-author,
+    .ytp-offline-slate,
+    .ytp-offline-slate-background,
+    .ytp-offline-slate-bar,
+    .ytp-offline-slate-button,
+    .ytp-offline-slate-close-button,
+    .ytp-offline-slate-form,
+    .ytp-offline-slate-icon,
+    .ytp-offline-slate-link,
+    .ytp-offline-slate-message,
+    .ytp-offline-slate-prompt,
+    .ytp-offline-slate-retry-button,
+    .ytp-offline-slate-sidebar,
+    .ytp-offline-slate-stats,
+    .ytp-offline-slate-subtitle,
+    .ytp-offline-slate-title,
+    .ytp-live,
+    .ytp-live-badge,
+    .ytp-live-spinner,
+    .ytp-live-spinner-container,
+    .ytp-live-spinner-circle,
+    .ytp-live-notifier,
+    .ytp-live-notifier-text,
+    .ytp-live-notifier-button,
+    .ytp-impression-link,
+    .ytp-impression-link-content,
+    .ytp-impression-link-log,
+    .ytp-flyout-cta,
+    .ytp-flyout-cta-container,
+    .ytp-flyout-cta-description,
+    .ytp-flyout-cta-icon,
+    .ytp-flyout-cta-action-button,
+    .ytp-flyout-cta-close-button,
+    .ytp-flyout-cta-image,
+    .ytp-flyout-cta-title,
+    .ytp-flyout-cta-text,
+    .ytp-flyout-cta-background,
+    .ytp-action-panel,
+    .ytp-action-panel-content,
+    .ytp-action-panel-title,
+    .ytp-action-panel-dismiss,
+    .ytp-action-panel-action,
+    .ytp-upnext,
+    .ytp-upnext-autoplay,
+    .ytp-upnext-bottom,
+    .ytp-upnext-cancel,
+    .ytp-upnext-header,
+    .ytp-upnext-paused,
+    .ytp-upnext-top,
+    .ytp-visit-website-button,
+    .ytp-visit-website-button-icon,
+    .ytp-visit-website-button-text,
+    .ytp-video-menu,
+    .ytp-video-menu-item,
+    .ytp-video-menu-title,
+    .ytp-video-menu-content,
+    .ytp-webgl-spherical-control,
+    .ytp-webgl-spherical-control-button,
+    .ytp-webgl-spherical-control-panel,
+    .ytp-webgl-spherical-control-title,
+    .ytp-3d-badge,
+    .ytp-3d-badge-tooltip,
+    .ytp-3d-badge-icon,
+    .ytp-3d-badge-text,
+    .ytp-3d-glasses,
+    .ytp-3d-glasses-icon,
+    .ytp-3d-glasses-text,
+    .ytp-3d-mode-button,
+    .ytp-3d-mode-button-container,
+    .ytp-360-logo,
+    .ytp-360-logo-button,
+    .ytp-360-logo-icon,
+    .ytp-360-logo-text,
+    .ytp-360-spinner,
+    .ytp-360-spinner-container,
+    .ytp-360-spinner-circle,
+    .ytp-360-title,
+    .ytp-360-title-container,
+    .ytp-360-title-text,
+    .ytp-vr-button,
+    .ytp-vr-button-container,
+    .ytp-vr-button-icon,
+    .ytp-vr-button-text,
+    .ytp-vr-display-button,
+    .ytp-vr-display-button-container,
+    .ytp-vr-display-button-icon,
+    .ytp-vr-display-button-text,
+    .ytp-vr-pause-button,
+    .ytp-vr-pause-button-container,
+    .ytp-vr-pause-button-icon,
+    .ytp-vr-pause-button-text,
+    .ytp-vr-play-button,
+    .ytp-vr-play-button-container,
+    .ytp-vr-play-button-icon,
+    .ytp-vr-play-button-text,
+    .ytp-vr-projection-button,
+    .ytp-vr-projection-button-container,
+    .ytp-vr-projection-button-icon,
+    .ytp-vr-projection-button-text,
+    .ytp-vr-quality-button,
+    .ytp-vr-quality-button-container,
+    .ytp-vr-quality-button-icon,
+    .ytp-vr-quality-button-text,
+    .ytp-vr-settings-button,
+    .ytp-vr-settings-button-container,
+    .ytp-vr-settings-button-icon,
+    .ytp-vr-settings-button-text,
+    .ytp-vr-title,
+    .ytp-vr-title-container,
+    .ytp-vr-title-text,
+    .ytp-vr-toggle-button,
+    .ytp-vr-toggle-button-container,
+    .ytp-vr-toggle-button-icon,
+    .ytp-vr-toggle-button-text {
       display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      position: absolute !important;
+      left: -9999px !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: hidden !important;
+      clip: rect(0, 0, 0, 0) !important;
+      clip-path: inset(50%) !important;
+      border: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      font-size: 0 !important;
+      line-height: 0 !important;
     }
     
-    /* Custom overlay to block clicks on hidden elements */
-    .secure-youtube-player::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 60px;
-      background: transparent;
-      z-index: 9999;
-      pointer-events: auto;
+    /* Hide all YouTube-related text and links */
+    a[href*="youtube.com"],
+    a[href*="youtu.be"],
+    a[href*="youtube-nocookie.com"],
+    [aria-label*="YouTube"],
+    [title*="YouTube"],
+    [alt*="YouTube"],
+    [src*="youtube.com"],
+    [src*="youtu.be"],
+    [data-url*="youtube.com"],
+    [data-url*="youtu.be"],
+    [onclick*="youtube.com"],
+    [onclick*="youtu.be"],
+    [href*="youtube.com"],
+    [href*="youtu.be"],
+    [action*="youtube.com"],
+    [action*="youtu.be"],
+    [target*="youtube.com"],
+    [target*="youtu.be"],
+    [rel*="youtube.com"],
+    [rel*="youtu.be"],
+    [class*="yt-"],
+    [id*="yt-"],
+    [name*="yt-"],
+    [data-yt-],
+    [data-youtube],
+    [data-yt],
+    [role*="youtube"],
+    [data-role*="youtube"] {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
+      position: absolute !important;
+      left: -9999px !important;
+      text-decoration: none !important;
+      color: transparent !important;
+      background: transparent !important;
+      border: none !important;
+      outline: none !important;
+      box-shadow: none !important;
     }
     
-    /* Disable right-click menu */
-    .secure-youtube-player iframe {
-      pointer-events: auto;
+    /* Block YouTube iframe overlay */
+    .youtube-blocker-overlay {
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      background: transparent !important;
+      z-index: 999999 !important;
+      pointer-events: auto !important;
     }
     
     /* Custom controls overlay */
-    .player-controls-overlay {
+    .custom-controls-overlay {
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      background: linear-gradient(transparent, rgba(0,0,0,0.7));
-      padding: 10px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.9));
+      padding: 15px 20px;
       z-index: 1000;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      backdrop-filter: blur(10px);
+      border-top: 1px solid rgba(255,255,255,0.1);
     }
     
-    .custom-control-btn {
-      background: rgba(255,255,255,0.2);
-      border: none;
+    .controls-left, .controls-right {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
+    
+    .control-btn {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.2);
       color: white;
-      padding: 8px 12px;
-      border-radius: 4px;
+      padding: 8px 16px;
+      border-radius: 6px;
       cursor: pointer;
-      margin: 0 5px;
-      transition: background 0.3s;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 500;
     }
     
-    .custom-control-btn:hover {
-      background: rgba(255,255,255,0.3);
+    .control-btn:hover {
+      background: rgba(255,255,255,0.25);
+      transform: translateY(-1px);
+    }
+    
+    .control-btn:active {
+      transform: translateY(0);
+    }
+    
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
     }
     
     .time-display {
       color: white;
-      font-family: monospace;
+      font-family: 'Courier New', monospace;
       font-size: 14px;
+      font-weight: 600;
+      background: rgba(0,0,0,0.5);
+      padding: 6px 12px;
+      border-radius: 4px;
+      min-width: 85px;
+      text-align: center;
     }
     
-    .security-badge {
+    .volume-slider {
+      width: 100px;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255,255,255,0.2);
+      border-radius: 3px;
+      outline: none;
+    }
+    
+    .volume-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #4299e1;
+      cursor: pointer;
+      border: 2px solid white;
+    }
+    
+    .security-indicator {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      background: rgba(0,0,0,0.7);
-      color: #4CAF50;
-      padding: 4px 8px;
-      border-radius: 4px;
+      top: 15px;
+      right: 15px;
+      background: rgba(0,0,0,0.8);
+      color: #48bb78;
+      padding: 6px 12px;
+      border-radius: 20px;
       font-size: 12px;
-      z-index: 1000;
+      font-weight: 600;
+      z-index: 1001;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      border: 1px solid rgba(72, 187, 120, 0.3);
+      backdrop-filter: blur(10px);
+    }
+    
+    .security-indicator.checking {
+      color: #ecc94b;
+      border-color: rgba(236, 201, 75, 0.3);
+    }
+    
+    .security-indicator.failed {
+      color: #f56565;
+      border-color: rgba(245, 101, 101, 0.3);
+    }
+    
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 1002;
+    }
+    
+    .loading-spinner {
+      width: 50px;
+      height: 50px;
+      border: 3px solid rgba(255,255,255,0.1);
+      border-radius: 50%;
+      border-top-color: #4299e1;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .error-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 30px;
+      z-index: 1003;
+    }
+    
+    .error-icon {
+      color: #f56565;
+      margin-bottom: 20px;
+    }
+    
+    /* Prevent text selection */
+    .secure-youtube-container * {
+      -webkit-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-touch-callout: none;
+    }
+    
+    /* Prevent image dragging */
+    .secure-youtube-container img {
+      -webkit-user-drag: none;
+      -khtml-user-drag: none;
+      -moz-user-drag: none;
+      -o-user-drag: none;
+      user-drag: none;
+    }
+    
+    /* Hide scrollbars */
+    .secure-youtube-container::-webkit-scrollbar {
+      display: none;
+    }
+    
+    /* iOS specific fixes */
+    @supports (-webkit-touch-callout: none) {
+      .secure-youtube-container iframe {
+        -webkit-overflow-scrolling: touch;
+      }
     }
   `;
 
   return (
-    <div className="secure-youtube-player">
+    <div className="secure-youtube-container" ref={containerRef}>
       <style>{playerStyles}</style>
       
       {playerError ? (
         <div className="error-overlay">
-          <div className="text-center p-8">
-            <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">Security Restriction</h3>
-            <p className="text-gray-300">{playerError}</p>
-          </div>
+          <Shield className="w-16 h-16 error-icon" />
+          <h3 className="text-xl font-bold text-white mb-2">Security Restriction</h3>
+          <p className="text-gray-300 mb-6">{playerError}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="control-btn"
+          >
+            <span>Reload Page</span>
+          </button>
         </div>
       ) : (
         <>
-          <div className="security-badge">
-            <Lock size={12} />
-            <span>Secure Player</span>
+          <div className={`security-indicator ${securityStatus}`}>
+            {securityStatus === 'checking' && (
+              <>
+                <div className="loading-spinner" style={{width: '12px', height: '12px', borderWidth: '2px'}} />
+                <span>Checking Security...</span>
+              </>
+            )}
+            {securityStatus === 'secure' && (
+              <>
+                <Shield size={12} />
+                <span>Secure Player</span>
+              </>
+            )}
+            {securityStatus === 'failed' && (
+              <>
+                <AlertCircle size={12} />
+                <span>Security Failed</span>
+              </>
+            )}
           </div>
           
-          {!isLoaded && (
+          {!isLoaded && securityStatus !== 'failed' && (
             <div className="loading-overlay">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                <p className="text-white">Loading secure video player...</p>
-              </div>
+              <div className="loading-spinner"></div>
+              <p className="text-white">Loading secure video player...</p>
+              <p className="text-gray-400 text-sm mt-2">Security checks in progress</p>
             </div>
           )}
           
           <iframe
             ref={iframeRef}
             src={generateSecureEmbedUrl()}
-            title={title}
-            className={`youtube-iframe ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
+            title={`Secure Player - ${title}`}
+            className="youtube-iframe"
+            allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen={false}
             loading="lazy"
             sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
             referrerPolicy="strict-origin-when-cross-origin"
+            frameBorder="0"
+            scrolling="no"
+            aria-label={`Video: ${title}`}
+            aria-describedby="video-description"
           />
-          
-          {/* Custom controls overlay */}
-          <div className="player-controls-overlay">
-            <div className="flex items-center">
-              <button 
-                onClick={handlePlayPause}
-                className="custom-control-btn"
-                disabled={!isLoaded}
-              >
-                {isPlaying ? '⏸️' : '▶️'}
-              </button>
-              
-              <span className="time-display ml-4">
-                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
-              </span>
-            </div>
-            
-            <div className="flex items-center">
-              <button 
-                onClick={() => handleSeek(currentTime - 10)}
-                className="custom-control-btn"
-                disabled={!isLoaded}
-              >
-                -10s
-              </button>
-              <button 
-                onClick={() => handleSeek(currentTime + 30)}
-                className="custom-control-btn"
-                disabled={!isLoaded}
-              >
-                +30s
-              </button>
-            </div>
+          <div id="video-description" className="sr-only">
+            Secure video player with enhanced security features
           </div>
           
-          {/* Additional security overlay */}
+          {/* Security overlay to block interactions with YouTube elements */}
           <div 
-            className="security-overlay"
+            className="youtube-blocker-overlay"
             onClick={(e) => {
-              // Prevent clicks on certain areas
-              if (e.target === e.currentTarget) {
+              // Block all clicks except on our custom controls
+              if (!(e.target as HTMLElement).closest('.custom-controls-overlay')) {
                 e.preventDefault();
                 e.stopPropagation();
               }
             }}
-            onContextMenu={(e) => e.preventDefault()}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toast.error('Right-click is disabled for security');
+            }}
+            onDoubleClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toast.error('Double-click is disabled');
+            }}
           />
+          
+          {/* Custom controls overlay */}
+          <div className="custom-controls-overlay">
+            <div className="controls-left">
+              <button 
+                onClick={handlePlayPause}
+                className="control-btn"
+                disabled={!isLoaded || securityStatus === 'failed'}
+                aria-label={isPlaying ? 'Pause video' : 'Play video'}
+              >
+                {isPlaying ? '⏸️' : '▶️'}
+                <span>{isPlaying ? 'Pause' : 'Play'}</span>
+              </button>
+              
+              <button 
+                onClick={() => handleSeek(-10)}
+                className="control-btn"
+                disabled={!isLoaded || securityStatus === 'failed'}
+                aria-label="Rewind 10 seconds"
+              >
+                ⏪
+                <span>-10s</span>
+              </button>
+              
+              <button 
+                onClick={() => handleSeek(30)}
+                className="control-btn"
+                disabled={!isLoaded || securityStatus === 'failed'}
+                aria-label="Forward 30 seconds"
+              >
+                ⏩
+                <span>+30s</span>
+              </button>
+              
+              <div className="time-display" aria-live="polite">
+                {formatTime(currentTime)}
+              </div>
+            </div>
+            
+            <div className="controls-right">
+              <div className="volume-control" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ color: 'white', fontSize: '12px' }}>Vol:</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={volume}
+                  onChange={(e) => handleVolumeChange(parseInt(e.target.value))}
+                  className="volume-slider"
+                  disabled={!isLoaded || securityStatus === 'failed'}
+                  aria-label="Volume control"
+                />
+                <span style={{ color: 'white', fontSize: '12px', minWidth: '30px' }}>
+                  {volume}%
+                </span>
+              </div>
+              
+              <button
+                onClick={() => toast.info('Fullscreen disabled for security')}
+                className="control-btn"
+                disabled={true}
+                aria-label="Fullscreen disabled"
+              >
+                ⛶
+                <span>No Fullscreen</span>
+              </button>
+            </div>
+          </div>
         </>
       )}
     </div>
@@ -743,7 +1473,6 @@ class VideoSessionManager {
   private rotationInterval: NodeJS.Timeout | null = null;
   
   constructor() {
-    // Cleanup expired sessions every 5 minutes
     this.rotationInterval = setInterval(() => {
       this.cleanupExpiredSessions();
     }, 5 * 60 * 1000);
@@ -766,10 +1495,8 @@ class VideoSessionManager {
   validateSession(userId: string, videoId: string, token: string): boolean {
     const sessionId = `${userId}:${videoId}`;
     
-    // Find matching session
     for (const [key, session] of this.sessions.entries()) {
       if (key.startsWith(sessionId) && session.token === token) {
-        // Check expiration
         if (session.expires > Date.now()) {
           return true;
         } else {
@@ -782,14 +1509,12 @@ class VideoSessionManager {
   }
   
   rotateSession(userId: string, videoId: string): string {
-    // Remove old sessions for this user/video
     for (const [key] of this.sessions.entries()) {
       if (key.startsWith(`${userId}:${videoId}`)) {
         this.sessions.delete(key);
       }
     }
     
-    // Create new session
     return this.createSession(userId, videoId);
   }
   
@@ -810,7 +1535,6 @@ class VideoSessionManager {
   }
 }
 
-// Create global session manager instance
 const videoSessionManager = new VideoSessionManager();
 
 // === Main Student Dashboard Component ===
@@ -847,17 +1571,14 @@ const StudentDashboard: React.FC = () => {
   const [videoUrls, setVideoUrls] = useState<{[key: string]: { url: string | null; type: string } }>({});
   const [videoRetryCount, setVideoRetryCount] = useState<{[key: string]: number}>({});
   
-  // Video session tokens
   const [videoSessionTokens, setVideoSessionTokens] = useState<{[key: string]: string}>({});
 
   useEffect(() => {
     return () => {
-      // Cleanup session manager on unmount
       videoSessionManager.destroy();
     };
   }, []);
 
-  // Generate session token for video
   const generateVideoSessionToken = (videoId: string): string => {
     if (!user) return '';
     
@@ -871,7 +1592,6 @@ const StudentDashboard: React.FC = () => {
       }));
     }
     
-    // Rotate token every 30 minutes for active videos
     setTimeout(() => {
       if (activeVideo === videoId) {
         const newToken = videoSessionManager.rotateSession(user.id, videoId);
@@ -880,7 +1600,6 @@ const StudentDashboard: React.FC = () => {
           [videoId]: newToken
         }));
         
-        // Force reload video with new token
         if (videoUrls[videoId]?.type === 'youtube') {
           const newUrls = { ...videoUrls };
           delete newUrls[videoId];
@@ -892,7 +1611,6 @@ const StudentDashboard: React.FC = () => {
     return token;
   };
 
-  // Fetch center info
   useEffect(() => {
     const fetchCenterInfo = async () => {
       if (!centerSlug) return;
@@ -921,7 +1639,6 @@ const StudentDashboard: React.FC = () => {
     fetchCenterInfo();
   }, [centerSlug]);
 
-  // Fetch exam results
   useEffect(() => {
     const fetchExamResults = async () => {
       if (!user) return;
@@ -969,7 +1686,6 @@ const StudentDashboard: React.FC = () => {
     fetchExamResults();
   }, [user, activeExam]);
 
-  // Fetch subscriptions and content
   useEffect(() => {
     const fetchSubscriptionsAndContent = async () => {
       try {
@@ -1271,7 +1987,6 @@ const StudentDashboard: React.FC = () => {
     fetchSubscriptionsAndContent();
   }, [user, centerId]);
 
-  // Helper functions
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
     const end = s.end_date ? new Date(s.end_date) : null;
@@ -1522,7 +2237,6 @@ const StudentDashboard: React.FC = () => {
         const videoInfo = await getVideoUrlAsync(videoUrl);
         setVideoUrls(prev => ({ ...prev, [videoId]: videoInfo }));
         
-        // Generate session token for YouTube videos
         if (videoInfo.type === 'youtube' && user) {
           generateVideoSessionToken(videoId);
         }
@@ -1591,7 +2305,6 @@ const StudentDashboard: React.FC = () => {
         if (action === "showVideos") setShowVideosPanel(true);
       }}
     >
-      {/* Active Exam Modal */}
       {activeExam && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1814,7 +2527,6 @@ const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Exam Results Modal */}
       {showExamResultsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1944,7 +2656,6 @@ const StudentDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Main Dashboard Content */}
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
@@ -1976,7 +2687,6 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Dashboard Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
@@ -2070,7 +2780,6 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Subscriptions Section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -2391,7 +3100,6 @@ const StudentDashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Progress Section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
           {courseProgress.length > 0 ? (
