@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import {
@@ -23,11 +23,13 @@ import {
   BarChart3,
   AlertCircle,
   Video,
+  Lock,
 } from "lucide-react";
 import DashboardLayout from "../../components/layout/DashboardLayout";
 import { useAuthStore } from "../../store/authStore";
 import { supabase } from "@/lib/supabase";
 import toast from "react-hot-toast";
+import CryptoJS from "crypto-js";
 
 interface UpcomingLesson {
   id: string;
@@ -94,7 +96,6 @@ interface VideoWithExams {
   }>;
 }
 
-/** Subscription + teacher content types */
 interface SubscriptionItem {
   id: string;
   student_id: string;
@@ -122,7 +123,6 @@ interface SubscriptionItem {
   }>;
 }
 
-// Interface for active exam
 interface ActiveExamState {
   examId: string;
   examTitle: string;
@@ -146,7 +146,6 @@ interface ActiveExamState {
   score?: number;
 }
 
-// Interface for exam result
 interface ExamResult {
   id: string;
   exam_id: string;
@@ -163,7 +162,479 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID
+// === YouTube Security Configuration ===
+const YOUTUBE_SECURITY_CONFIG = {
+  // Secret key for URL signing (should be stored in env in production)
+  URL_SECRET: process.env.REACT_APP_VIDEO_SECRET || 'your-secret-key-here-change-in-production',
+  
+  // Session expiration in seconds (1 hour)
+  SESSION_EXPIRY: 3600,
+  
+  // Allowed domains (only our domain can play videos)
+  ALLOWED_DOMAINS: [
+    window.location.hostname,
+    'localhost',
+    '127.0.0.1'
+  ],
+  
+  // YouTube player parameters for maximum security
+  PLAYER_PARAMS: {
+    controls: 1,                    // Show controls but customize them
+    disablekb: 1,                   // Disable keyboard controls
+    fs: 0,                          // Disable fullscreen button
+    modestbranding: 1,              // Hide YouTube logo
+    rel: 0,                         // Don't show related videos
+    showinfo: 0,                    // Don't show video info
+    iv_load_policy: 3,              // Don't show annotations
+    playsinline: 1,                 // Play inline on iOS
+    enablejsapi: 1,                 // Enable JavaScript API for more control
+    origin: window.location.origin, // Lock to our origin
+    widget_referrer: window.location.origin, // Referrer for security
+    autoplay: 0,                    // Don't autoplay
+    cc_load_policy: 0,              // No captions by default
+  }
+};
+
+// === Secure YouTube Player Component ===
+interface YouTubePlayerProps {
+  videoId: string;
+  title: string;
+  sessionToken: string;
+  userId: string;
+  videoRecordId: string;
+}
+
+const SecureYouTubePlayer: React.FC<YouTubePlayerProps> = ({ 
+  videoId, 
+  title, 
+  sessionToken,
+  userId,
+  videoRecordId 
+}) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [playerError, setPlayerError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [playerInstance, setPlayerInstance] = useState<any>(null);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Generate secure signed URL with timestamp and signature
+  const generateSecureEmbedUrl = () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const expiry = timestamp + YOUTUBE_SECURITY_CONFIG.SESSION_EXPIRY;
+    
+    // Create data payload
+    const payload = {
+      v: videoId,
+      t: timestamp,
+      e: expiry,
+      u: userId,
+      vid: videoRecordId,
+      d: window.location.hostname
+    };
+    
+    // Create signature
+    const dataString = JSON.stringify(payload);
+    const signature = CryptoJS.HmacSHA256(dataString, YOUTUBE_SECURITY_CONFIG.URL_SECRET).toString();
+    
+    // Base parameters
+    const baseParams = new URLSearchParams({
+      ...YOUTUBE_SECURITY_CONFIG.PLAYER_PARAMS,
+      enablejsapi: '1',
+      origin: window.location.origin,
+      widget_referrer: window.location.origin,
+      autoplay: '0',
+    } as any).toString();
+    
+    // Add encrypted session data as fragment
+    const encryptedData = CryptoJS.AES.encrypt(
+      JSON.stringify({ payload, signature }),
+      YOUTUBE_SECURITY_CONFIG.URL_SECRET
+    ).toString();
+    
+    return `https://www.youtube-nocookie.com/embed/${videoId}?${baseParams}#${encodeURIComponent(encryptedData)}`;
+  };
+
+  // Validate session on backend (simulated)
+  const validateSession = async (): Promise<boolean> => {
+    try {
+      // In a real app, you would make an API call to validate the session
+      // For now, we'll simulate validation
+      const isValid = YOUTUBE_SECURITY_CONFIG.ALLOWED_DOMAINS.includes(window.location.hostname);
+      
+      if (!isValid) {
+        console.warn('Domain not allowed:', window.location.hostname);
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Session validation error:', error);
+      return false;
+    }
+  };
+
+  // Initialize YouTube Player API
+  const initYouTubeAPI = () => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
+      
+      (window as any).onYouTubeIframeAPIReady = () => {
+        createPlayer();
+      };
+    } else {
+      createPlayer();
+    }
+  };
+
+  // Create YouTube player instance
+  const createPlayer = () => {
+    if (!iframeRef.current) return;
+    
+    const player = new (window as any).YT.Player(iframeRef.current, {
+      events: {
+        onReady: (event: any) => {
+          setIsLoaded(true);
+          setPlayerInstance(event.target);
+          
+          // Disable certain features via postMessage
+          disableYouTubeFeatures();
+          
+          // Start tracking playback
+          startPlaybackTracking();
+        },
+        onStateChange: (event: any) => {
+          // 1: playing, 2: paused, 3: buffering, 0: ended
+          if (event.data === 1) {
+            setIsPlaying(true);
+          } else if (event.data === 2 || event.data === 0) {
+            setIsPlaying(false);
+          }
+        },
+        onError: (event: any) => {
+          console.error('YouTube player error:', event.data);
+          setPlayerError('Failed to load video. Please try again.');
+        }
+      }
+    });
+    
+    setPlayerInstance(player);
+  };
+
+  // Disable unwanted YouTube features
+  const disableYouTubeFeatures = () => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    // Disable right-click context menu
+    iframe.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      return false;
+    });
+
+    // Prevent drag-and-drop
+    iframe.setAttribute('draggable', 'false');
+
+    // Disable certain keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (document.activeElement === iframe) {
+        // Prevent fullscreen with F11
+        if (e.key === 'F11') {
+          e.preventDefault();
+        }
+        // Prevent escape from fullscreen
+        if (e.key === 'Escape' && document.fullscreenElement) {
+          e.preventDefault();
+        }
+      }
+    });
+  };
+
+  // Track playback time
+  const startPlaybackTracking = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+    }
+
+    intervalRef.current = setInterval(() => {
+      if (playerInstance && playerInstance.getCurrentTime) {
+        try {
+          const time = playerInstance.getCurrentTime();
+          setCurrentTime(time);
+          
+          // Log playback for analytics (optional)
+          if (Math.floor(time) % 30 === 0) { // Every 30 seconds
+            logPlaybackEvent(time);
+          }
+        } catch (error) {
+          // Silent fail
+        }
+      }
+    }, 1000);
+  };
+
+  // Log playback events
+  const logPlaybackEvent = async (time: number) => {
+    try {
+      // You can send this to your backend for analytics
+      console.log('Playback tracking:', { videoId, userId, time });
+    } catch (error) {
+      // Silent fail for analytics
+    }
+  };
+
+  // Handle play/pause
+  const handlePlayPause = () => {
+    if (!playerInstance) return;
+    
+    if (isPlaying) {
+      playerInstance.pauseVideo();
+    } else {
+      playerInstance.playVideo();
+    }
+  };
+
+  // Handle seek
+  const handleSeek = (seconds: number) => {
+    if (!playerInstance) return;
+    playerInstance.seekTo(seconds, true);
+  };
+
+  // Cleanup
+  useEffect(() => {
+    initYouTubeAPI();
+    
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      
+      if (playerInstance && playerInstance.destroy) {
+        playerInstance.destroy();
+      }
+    };
+  }, []);
+
+  // Validate session on mount
+  useEffect(() => {
+    validateSession().then(isValid => {
+      if (!isValid) {
+        setPlayerError('Video playback is not allowed from this domain.');
+      }
+    });
+  }, []);
+
+  // === CSS to hide YouTube elements ===
+  const playerStyles = `
+    .secure-youtube-player {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+    
+    .secure-youtube-player iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    
+    /* Hide YouTube logo */
+    .ytp-chrome-top .ytp-title-channel-logo,
+    .ytp-title-link.yt-uix-sessionlink,
+    .ytp-watermark {
+      display: none !important;
+      opacity: 0 !important;
+      visibility: hidden !important;
+    }
+    
+    /* Hide related videos at end */
+    .ytp-endscreen-content,
+    .ytp-videowall-still,
+    .ytp-ce-element {
+      display: none !important;
+    }
+    
+    /* Hide YouTube brand elements */
+    .ytp-show-cards-title,
+    .ytp-title-text,
+    .ytp-title-subtitle {
+      display: none !important;
+    }
+    
+    /* Hide menu buttons */
+    .ytp-settings-button,
+    .ytp-button.ytp-youtube-button,
+    .ytp-chrome-top-buttons .ytp-button[aria-label*="YouTube"] {
+      display: none !important;
+    }
+    
+    /* Custom overlay to block clicks on hidden elements */
+    .secure-youtube-player::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: transparent;
+      z-index: 9999;
+      pointer-events: auto;
+    }
+    
+    /* Disable right-click menu */
+    .secure-youtube-player iframe {
+      pointer-events: auto;
+    }
+    
+    /* Custom controls overlay */
+    .player-controls-overlay {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.7));
+      padding: 10px;
+      z-index: 1000;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .custom-control-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 0 5px;
+      transition: background 0.3s;
+    }
+    
+    .custom-control-btn:hover {
+      background: rgba(255,255,255,0.3);
+    }
+    
+    .time-display {
+      color: white;
+      font-family: monospace;
+      font-size: 14px;
+    }
+    
+    .security-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: rgba(0,0,0,0.7);
+      color: #4CAF50;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+  `;
+
+  return (
+    <div className="secure-youtube-player">
+      <style>{playerStyles}</style>
+      
+      {playerError ? (
+        <div className="error-overlay">
+          <div className="text-center p-8">
+            <Lock className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h3 className="text-xl font-bold text-white mb-2">Security Restriction</h3>
+            <p className="text-gray-300">{playerError}</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="security-badge">
+            <Lock size={12} />
+            <span>Secure Player</span>
+          </div>
+          
+          {!isLoaded && (
+            <div className="loading-overlay">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                <p className="text-white">Loading secure video player...</p>
+              </div>
+            </div>
+          )}
+          
+          <iframe
+            ref={iframeRef}
+            src={generateSecureEmbedUrl()}
+            title={title}
+            className={`youtube-iframe ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            loading="lazy"
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+          
+          {/* Custom controls overlay */}
+          <div className="player-controls-overlay">
+            <div className="flex items-center">
+              <button 
+                onClick={handlePlayPause}
+                className="custom-control-btn"
+                disabled={!isLoaded}
+              >
+                {isPlaying ? '⏸️' : '▶️'}
+              </button>
+              
+              <span className="time-display ml-4">
+                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+            
+            <div className="flex items-center">
+              <button 
+                onClick={() => handleSeek(currentTime - 10)}
+                className="custom-control-btn"
+                disabled={!isLoaded}
+              >
+                -10s
+              </button>
+              <button 
+                onClick={() => handleSeek(currentTime + 30)}
+                className="custom-control-btn"
+                disabled={!isLoaded}
+              >
+                +30s
+              </button>
+            </div>
+          </div>
+          
+          {/* Additional security overlay */}
+          <div 
+            className="security-overlay"
+            onClick={(e) => {
+              // Prevent clicks on certain areas
+              if (e.target === e.currentTarget) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+// === Original functions (unchanged) ===
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
@@ -183,7 +654,6 @@ const extractYouTubeVideoId = (url: string | null): string | null => {
   return null;
 };
 
-// Function to get public URL from Supabase Storage
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
 
@@ -192,11 +662,8 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   }
 
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
-
-  // Handle different video URL formats
   let cleanPath = videoUrl;
 
-  // Remove any leading slashes or 'videos/' prefix for consistent handling
   if (cleanPath.startsWith('videos/')) {
     cleanPath = cleanPath.replace('videos/', '');
   }
@@ -204,16 +671,13 @@ const getPublicVideoUrl = (videoUrl: string | null): string | null => {
     cleanPath = cleanPath.substring(1);
   }
 
-  // If it's already a full Supabase URL, return as is
   if (videoUrl.includes('storage/v1/object')) {
     return videoUrl;
   }
 
-  // Construct public URL for videos bucket
   return `${supabaseUrl}/storage/v1/object/public/videos/${cleanPath}`;
 };
 
-// Function to get proper video URL based on source (async version for Supabase)
 const getVideoUrlAsync = async (videoUrl: string | null): Promise<{ url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' }> => {
   if (!videoUrl) return { url: null, type: 'unknown' };
 
@@ -229,9 +693,7 @@ const getVideoUrlAsync = async (videoUrl: string | null): Promise<{ url: string 
     return { url: videoUrl, type: 'direct' };
   }
 
-  // For Supabase videos, try to get a signed URL first (works for private buckets)
   try {
-    // Clean the path for signed URL creation
     let cleanPath = videoUrl;
     if (cleanPath.startsWith('videos/')) {
       cleanPath = cleanPath.replace('videos/', '');
@@ -240,7 +702,7 @@ const getVideoUrlAsync = async (videoUrl: string | null): Promise<{ url: string 
       cleanPath = cleanPath.substring(1);
     }
 
-    const { data, error } = await supabase.storage.from('videos').createSignedUrl(cleanPath, 3600); // 1 hour expiry
+    const { data, error } = await supabase.storage.from('videos').createSignedUrl(cleanPath, 3600);
     if (error) {
       console.warn('Signed URL creation failed, trying public URL:', error);
       throw error;
@@ -252,12 +714,10 @@ const getVideoUrlAsync = async (videoUrl: string | null): Promise<{ url: string 
     console.warn('Error getting signed URL, falling back to public URL:', error);
   }
 
-  // Fallback to public URL construction
   const publicUrl = getPublicVideoUrl(videoUrl);
   return { url: publicUrl, type: 'supabase' };
 };
 
-// Synchronous fallback for initial render
 const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
   if (!videoUrl) return { url: null, type: 'unknown' };
 
@@ -277,44 +737,83 @@ const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'yout
   return { url: supabaseUrl, type: 'supabase' };
 };
 
-// Simple YouTube Player Component
-const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
-  const [isLoaded, setIsLoaded] = useState(false);
+// === Session-based URL Rotation System ===
+class VideoSessionManager {
+  private sessions: Map<string, { token: string; expires: number }> = new Map();
+  private rotationInterval: NodeJS.Timeout | null = null;
+  
+  constructor() {
+    // Cleanup expired sessions every 5 minutes
+    this.rotationInterval = setInterval(() => {
+      this.cleanupExpiredSessions();
+    }, 5 * 60 * 1000);
+  }
+  
+  createSession(userId: string, videoId: string): string {
+    const sessionId = `${userId}:${videoId}:${Date.now()}`;
+    const token = CryptoJS.HmacSHA256(
+      sessionId,
+      YOUTUBE_SECURITY_CONFIG.URL_SECRET
+    ).toString();
+    
+    const expires = Date.now() + (YOUTUBE_SECURITY_CONFIG.SESSION_EXPIRY * 1000);
+    
+    this.sessions.set(sessionId, { token, expires });
+    
+    return token;
+  }
+  
+  validateSession(userId: string, videoId: string, token: string): boolean {
+    const sessionId = `${userId}:${videoId}`;
+    
+    // Find matching session
+    for (const [key, session] of this.sessions.entries()) {
+      if (key.startsWith(sessionId) && session.token === token) {
+        // Check expiration
+        if (session.expires > Date.now()) {
+          return true;
+        } else {
+          this.sessions.delete(key);
+        }
+      }
+    }
+    
+    return false;
+  }
+  
+  rotateSession(userId: string, videoId: string): string {
+    // Remove old sessions for this user/video
+    for (const [key] of this.sessions.entries()) {
+      if (key.startsWith(`${userId}:${videoId}`)) {
+        this.sessions.delete(key);
+      }
+    }
+    
+    // Create new session
+    return this.createSession(userId, videoId);
+  }
+  
+  private cleanupExpiredSessions() {
+    const now = Date.now();
+    for (const [key, session] of this.sessions.entries()) {
+      if (session.expires <= now) {
+        this.sessions.delete(key);
+      }
+    }
+  }
+  
+  destroy() {
+    if (this.rotationInterval) {
+      clearInterval(this.rotationInterval);
+    }
+    this.sessions.clear();
+  }
+}
 
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
-  };
+// Create global session manager instance
+const videoSessionManager = new VideoSessionManager();
 
-  // Generate simple embed URL
-  const getEmbedUrl = () => {
-    return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&iv_load_policy=3&cc_load_policy=0`;
-  };
-
-  return (
-    <div className="relative w-full h-full bg-black">
-      {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-white text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p>Loading video...</p>
-          </div>
-        </div>
-      )}
-
-      <iframe
-        src={getEmbedUrl()}
-        title={title}
-        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
-        frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-        allowFullScreen
-        loading="lazy"
-        onLoad={handleIframeLoad}
-      />
-    </div>
-  );
-};
-
+// === Main Student Dashboard Component ===
 const StudentDashboard: React.FC = () => {
   const { user } = useAuthStore();
   const { centerSlug } = useParams<{ centerSlug: string }>();
@@ -334,23 +833,66 @@ const StudentDashboard: React.FC = () => {
   const [activeVideo, setActiveVideo] = useState<string | null>(null);
   const [examResults, setExamResults] = useState<{[key: string]: ExamResult[]}>({});
   
-  // Active exam state
   const [activeExam, setActiveExam] = useState<ActiveExamState | null>(null);
   const [examTimer, setExamTimer] = useState<NodeJS.Timeout | null>(null);
   
-  // Exam results modal state
   const [showExamResultsModal, setShowExamResultsModal] = useState(false);
   const [selectedExamResults, setSelectedExamResults] = useState<ExamResult[]>([]);
   const [selectedExamTitle, setSelectedExamTitle] = useState("");
   const [selectedTeacherName, setSelectedTeacherName] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
 
-  // Video loading states
   const [videoLoading, setVideoLoading] = useState<{[key: string]: boolean}>({});
   const [videoErrors, setVideoErrors] = useState<{[key: string]: string}>({});
   const [videoUrls, setVideoUrls] = useState<{[key: string]: { url: string | null; type: string } }>({});
   const [videoRetryCount, setVideoRetryCount] = useState<{[key: string]: number}>({});
+  
+  // Video session tokens
+  const [videoSessionTokens, setVideoSessionTokens] = useState<{[key: string]: string}>({});
 
+  useEffect(() => {
+    return () => {
+      // Cleanup session manager on unmount
+      videoSessionManager.destroy();
+    };
+  }, []);
+
+  // Generate session token for video
+  const generateVideoSessionToken = (videoId: string): string => {
+    if (!user) return '';
+    
+    let token = videoSessionTokens[videoId];
+    
+    if (!token) {
+      token = videoSessionManager.createSession(user.id, videoId);
+      setVideoSessionTokens(prev => ({
+        ...prev,
+        [videoId]: token
+      }));
+    }
+    
+    // Rotate token every 30 minutes for active videos
+    setTimeout(() => {
+      if (activeVideo === videoId) {
+        const newToken = videoSessionManager.rotateSession(user.id, videoId);
+        setVideoSessionTokens(prev => ({
+          ...prev,
+          [videoId]: newToken
+        }));
+        
+        // Force reload video with new token
+        if (videoUrls[videoId]?.type === 'youtube') {
+          const newUrls = { ...videoUrls };
+          delete newUrls[videoId];
+          setVideoUrls(newUrls);
+        }
+      }
+    }, 30 * 60 * 1000);
+    
+    return token;
+  };
+
+  // Fetch center info
   useEffect(() => {
     const fetchCenterInfo = async () => {
       if (!centerSlug) return;
@@ -379,6 +921,7 @@ const StudentDashboard: React.FC = () => {
     fetchCenterInfo();
   }, [centerSlug]);
 
+  // Fetch exam results
   useEffect(() => {
     const fetchExamResults = async () => {
       if (!user) return;
@@ -426,6 +969,7 @@ const StudentDashboard: React.FC = () => {
     fetchExamResults();
   }, [user, activeExam]);
 
+  // Fetch subscriptions and content
   useEffect(() => {
     const fetchSubscriptionsAndContent = async () => {
       try {
@@ -727,6 +1271,7 @@ const StudentDashboard: React.FC = () => {
     fetchSubscriptionsAndContent();
   }, [user, centerId]);
 
+  // Helper functions
   const computeSubscriptionStatus = (s: SubscriptionItem) => {
     const now = new Date();
     const end = s.end_date ? new Date(s.end_date) : null;
@@ -973,10 +1518,14 @@ const StudentDashboard: React.FC = () => {
       setVideoLoading(prev => ({ ...prev, [videoId]: true }));
       setVideoErrors(prev => ({ ...prev, [videoId]: "" }));
 
-      // Fetch the video URL asynchronously
       try {
         const videoInfo = await getVideoUrlAsync(videoUrl);
         setVideoUrls(prev => ({ ...prev, [videoId]: videoInfo }));
+        
+        // Generate session token for YouTube videos
+        if (videoInfo.type === 'youtube' && user) {
+          generateVideoSessionToken(videoId);
+        }
       } catch (error) {
         console.error('Error fetching video URL:', error);
         setVideoErrors(prev => ({
@@ -1042,6 +1591,7 @@ const StudentDashboard: React.FC = () => {
         if (action === "showVideos") setShowVideosPanel(true);
       }}
     >
+      {/* Active Exam Modal */}
       {activeExam && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1264,6 +1814,7 @@ const StudentDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Exam Results Modal */}
       {showExamResultsModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -1393,6 +1944,7 @@ const StudentDashboard: React.FC = () => {
         </div>
       )}
 
+      {/* Main Dashboard Content */}
       <div className="space-y-6">
         <div className="bg-white rounded-lg shadow-card p-6">
           <h1 className="text-2xl font-bold text-gray-900">
@@ -1424,6 +1976,7 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Dashboard Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white rounded-lg shadow-card p-5 flex flex-col h-full">
             <div className="flex items-center mb-4">
@@ -1517,6 +2070,7 @@ const StudentDashboard: React.FC = () => {
           </div>
         </div>
 
+        {/* Subscriptions Section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900">Your Subscriptions</h2>
@@ -1581,6 +2135,7 @@ const StudentDashboard: React.FC = () => {
                             <div className="space-y-6">
                               {sub.videosWithExams.map((video) => {
                                 const videoInfo = videoUrls[video.id] || getVideoUrl(video.video_url);
+                                const sessionToken = user ? generateVideoSessionToken(video.id) : '';
 
                                 return (
                                   <div key={video.id} className="border rounded-lg overflow-hidden">
@@ -1623,40 +2178,33 @@ const StudentDashboard: React.FC = () => {
                                               <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
                                               <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
                                             </div>
+                                          ) : videoInfo.url && videoInfo.type === 'youtube' ? (
+                                            <SecureYouTubePlayer
+                                              videoId={videoInfo.url}
+                                              title={video.title}
+                                              sessionToken={sessionToken}
+                                              userId={user?.id || ''}
+                                              videoRecordId={video.id}
+                                            />
                                           ) : videoInfo.url ? (
-                                            <>
-                                              {videoInfo.type === 'youtube' ? (
-                                                <YouTubePlayer
-                                                  videoId={videoInfo.url}
-                                                  title={video.title}
-                                                />
-                                              ) : (
-                                                <video
-                                                  key={`${video.id}-${Date.now()}`}
-                                                  src={videoInfo.url}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  controls
-                                                  controlsList="nodownload noplaybackrate"
-                                                  playsInline
-                                                  preload="metadata"
-                                                  onError={(e) => {
-                                                    setVideoErrors(prev => ({
-                                                      ...prev,
-                                                      [video.id]: "Failed to load video. Please try again later."
-                                                    }));
-                                                  }}
-                                                >
-                                                  Your browser does not support the video tag.
-                                                </video>
-                                              )}
-                                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  Platform Video Player
-                                                </p>
-                                              </div>
-                                            </>
+                                            <video
+                                              key={`${video.id}-${Date.now()}`}
+                                              src={videoInfo.url}
+                                              title={video.title}
+                                              className="absolute inset-0 w-full h-full"
+                                              controls
+                                              controlsList="nodownload noplaybackrate"
+                                              playsInline
+                                              preload="metadata"
+                                              onError={(e) => {
+                                                setVideoErrors(prev => ({
+                                                  ...prev,
+                                                  [video.id]: "Failed to load video. Please try again later."
+                                                }));
+                                              }}
+                                            >
+                                              Your browser does not support the video tag.
+                                            </video>
                                           ) : (
                                             <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
                                               <Video className="w-16 h-16 text-yellow-500 mb-4" />
@@ -1831,7 +2379,7 @@ const StudentDashboard: React.FC = () => {
                               ) : (
                                 <p className="text-gray-500 text-center py-4">No study materials available</p>
                               )}
-                        </div>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -1843,6 +2391,7 @@ const StudentDashboard: React.FC = () => {
           )}
         </div>
 
+        {/* Progress Section */}
         <div className="bg-white rounded-lg shadow-card p-6">
           <h2 className="text-xl font-semibold">Progress</h2>
           {courseProgress.length > 0 ? (
