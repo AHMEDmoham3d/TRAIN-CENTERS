@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useParams } from "react-router-dom";
 import {
@@ -163,153 +163,359 @@ interface ExamResult {
   };
 }
 
-// Function to extract YouTube Video ID
+// Function to extract YouTube Video ID - SIMPLIFIED AND WORKING
 const extractYouTubeVideoId = (url: string | null): string | null => {
   if (!url) return null;
   
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /youtube\.com\/v\/([^&\n?#]+)/,
-    /youtube\.com\/watch\?.*v=([^&\n?#]+)/
-  ];
+  const cleanUrl = url.trim();
   
-  for (const pattern of patterns) {
-    const match = url.match(pattern);
-    if (match && match[1]) {
-      return match[1];
+  console.log("Extracting YouTube ID from:", cleanUrl);
+  
+  // Handle youtu.be URLs
+  if (cleanUrl.includes('youtu.be/')) {
+    const parts = cleanUrl.split('youtu.be/');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from youtu.be:", videoId);
+      return videoId;
     }
   }
   
+  // Handle youtube.com/embed URLs
+  if (cleanUrl.includes('youtube.com/embed/')) {
+    const parts = cleanUrl.split('youtube.com/embed/');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from embed:", videoId);
+      return videoId;
+    }
+  }
+  
+  // Handle youtube.com/watch?v= URLs
+  if (cleanUrl.includes('youtube.com/watch?v=')) {
+    const parts = cleanUrl.split('v=');
+    if (parts[1]) {
+      const videoId = parts[1].split(/[?&#]/)[0];
+      console.log("Extracted from watch:", videoId);
+      return videoId;
+    }
+  }
+  
+  // Try regex pattern
+  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+  const match = cleanUrl.match(regex);
+  if (match && match[1]) {
+    console.log("Extracted from regex:", match[1]);
+    return match[1];
+  }
+  
+  console.log("No YouTube ID found");
   return null;
 };
 
-// Function to get public URL from Supabase Storage
+// Function to get public URL from Supabase Storage - FIXED
 const getPublicVideoUrl = (videoUrl: string | null): string | null => {
   if (!videoUrl) return null;
-
+  
+  console.log("Getting public URL for:", videoUrl);
+  
+  // If it's already a full URL, return it
   if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
+    console.log("Already a full URL:", videoUrl);
     return videoUrl;
   }
-
+  
   const supabaseUrl = "https://biqzcfbcsflriybyvtur.supabase.co";
-
-  // Handle different video URL formats
-  let cleanPath = videoUrl;
-
-  // Remove any leading slashes or 'videos/' prefix for consistent handling
-  if (cleanPath.startsWith('videos/')) {
-    cleanPath = cleanPath.replace('videos/', '');
-  }
-  if (cleanPath.startsWith('/')) {
-    cleanPath = cleanPath.substring(1);
-  }
-
-  // If it's already a full Supabase URL, return as is
-  if (videoUrl.includes('storage/v1/object')) {
+  
+  // If it's already a Supabase URL, return it
+  if (videoUrl.includes(supabaseUrl)) {
+    console.log("Already a Supabase URL:", videoUrl);
     return videoUrl;
   }
-
-  // Construct public URL for videos bucket
-  return `${supabaseUrl}/storage/v1/object/public/videos/${cleanPath}`;
+  
+  // Extract filename from path
+  let filename = videoUrl;
+  if (filename.includes('/')) {
+    const parts = filename.split('/');
+    filename = parts[parts.length - 1];
+    console.log("Extracted filename:", filename);
+  }
+  
+  // Remove any query parameters
+  if (filename.includes('?')) {
+    filename = filename.split('?')[0];
+  }
+  
+  const result = `${supabaseUrl}/storage/v1/object/public/videos/${filename}`;
+  console.log("Generated Supabase URL:", result);
+  return result;
 };
 
-// Function to get proper video URL based on source (async version for Supabase)
-const getVideoUrlAsync = async (videoUrl: string | null): Promise<{ url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' }> => {
-  if (!videoUrl) return { url: null, type: 'unknown' };
-
+// Function to get proper video URL based on source - FIXED
+const getVideoInfo = (videoUrl: string | null): { 
+  url: string | null; 
+  type: 'youtube' | 'supabase' | 'direct' | 'unknown'; 
+  videoId?: string | null;
+} => {
+  if (!videoUrl) {
+    console.log("No video URL provided");
+    return { url: null, type: 'unknown' };
+  }
+  
+  console.log("Getting video info for URL:", videoUrl);
+  
+  // Check if it's a YouTube URL
   const youtubeId = extractYouTubeVideoId(videoUrl);
   if (youtubeId) {
-    return {
-      url: youtubeId,
-      type: 'youtube'
+    console.log("Detected YouTube video with ID:", youtubeId);
+    return { 
+      url: `https://www.youtube.com/embed/${youtubeId}`, 
+      type: 'youtube',
+      videoId: youtubeId
     };
   }
-
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return { url: videoUrl, type: 'direct' };
-  }
-
-  // For Supabase videos, try to get a signed URL first (works for private buckets)
-  try {
-    // Clean the path for signed URL creation
-    let cleanPath = videoUrl;
-    if (cleanPath.startsWith('videos/')) {
-      cleanPath = cleanPath.replace('videos/', '');
-    }
-    if (cleanPath.startsWith('/')) {
-      cleanPath = cleanPath.substring(1);
-    }
-
-    const { data, error } = await supabase.storage.from('videos').createSignedUrl(cleanPath, 3600); // 1 hour expiry
-    if (error) {
-      console.warn('Signed URL creation failed, trying public URL:', error);
-      throw error;
-    }
-    if (data?.signedUrl) {
-      return { url: data.signedUrl, type: 'supabase' };
-    }
-  } catch (error) {
-    console.warn('Error getting signed URL, falling back to public URL:', error);
-  }
-
-  // Fallback to public URL construction
-  const publicUrl = getPublicVideoUrl(videoUrl);
-  return { url: publicUrl, type: 'supabase' };
-};
-
-// Synchronous fallback for initial render
-const getVideoUrl = (videoUrl: string | null): { url: string | null; type: 'youtube' | 'supabase' | 'direct' | 'unknown' } => {
-  if (!videoUrl) return { url: null, type: 'unknown' };
-
-  const youtubeId = extractYouTubeVideoId(videoUrl);
-  if (youtubeId) {
-    return {
-      url: youtubeId,
-      type: 'youtube'
-    };
-  }
-
-  if (videoUrl.startsWith('http://') || videoUrl.startsWith('https://')) {
-    return { url: videoUrl, type: 'direct' };
-  }
-
+  
+  // Check if it's a Supabase URL or needs conversion
   const supabaseUrl = getPublicVideoUrl(videoUrl);
-  return { url: supabaseUrl, type: 'supabase' };
+  if (supabaseUrl) {
+    console.log("Detected Supabase video with URL:", supabaseUrl);
+    return { 
+      url: supabaseUrl, 
+      type: 'supabase'
+    };
+  }
+  
+  // Direct URL
+  console.log("Detected direct video URL:", videoUrl);
+  return { url: videoUrl, type: 'direct' };
 };
 
-// Simple YouTube Player Component
+// SIMPLE WORKING YouTube Player Component
 const YouTubePlayer: React.FC<{videoId: string; title: string}> = ({videoId, title}) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleIframeLoad = () => {
-    setIsLoaded(true);
+  const getEmbedUrl = () => {
+    const params = new URLSearchParams({
+      'rel': '0',
+      'modestbranding': '1',
+      'showinfo': '0',
+      'controls': '1',
+      'fs': '0',
+      'disablekb': '1',
+      'iv_load_policy': '3',
+      'enablejsapi': '0',
+      'origin': window.location.origin,
+      'widget_referrer': window.location.origin,
+      'playsinline': '1',
+      'autoplay': '0',
+      'mute': '0'
+    });
+
+    return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
   };
 
-  // Generate simple embed URL
-  const getEmbedUrl = () => {
-    return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&iv_load_policy=3&cc_load_policy=0`;
+  const handleIframeLoad = () => {
+    console.log("YouTube iframe loaded successfully");
+    setIsLoaded(true);
+    setError(null);
+  };
+
+  const handleIframeError = () => {
+    console.error("YouTube iframe failed to load");
+    setError("Failed to load YouTube video. The video may be private or unavailable.");
+    setIsLoaded(false);
   };
 
   return (
-    <div className="relative w-full h-full bg-black">
-      {!isLoaded && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="text-white text-center">
+    <div className="relative w-full h-full bg-black overflow-hidden rounded-lg">
+      {!isLoaded && !error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
+          <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p>Loading video...</p>
+            <p className="text-white">Loading YouTube video...</p>
           </div>
         </div>
       )}
-
+      
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gray-900 z-20">
+          <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+          <p className="text-white text-lg font-semibold mb-2">YouTube Video Error</p>
+          <p className="text-gray-300 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setError(null);
+              setIsLoaded(false);
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      
       <iframe
         src={getEmbedUrl()}
         title={title}
-        className={`absolute inset-0 w-full h-full ${isLoaded ? 'opacity-100' : 'opacity-0'}`}
+        className="absolute inset-0 w-full h-full"
         frameBorder="0"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
-        allowFullScreen
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowFullScreen={false}
+        referrerPolicy="strict-origin-when-cross-origin"
         loading="lazy"
         onLoad={handleIframeLoad}
+        onError={handleIframeError}
+      />
+      
+      {isLoaded && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
+          <p className="text-white text-sm font-medium">{title}</p>
+          <p className="text-gray-300 text-xs">YouTube Video Player</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// SIMPLE WORKING Direct Video Player Component
+const DirectVideoPlayer: React.FC<{videoUrl: string; title: string}> = ({videoUrl, title}) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    console.log("DirectVideoPlayer mounting with URL:", videoUrl);
+    setIsLoading(true);
+    setError(null);
+    
+    if (videoRef.current) {
+      console.log("Loading video element");
+      videoRef.current.load();
+    }
+  }, [videoUrl]);
+
+  const handleVideoLoad = () => {
+    console.log("Video loaded successfully");
+    setIsLoading(false);
+  };
+
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+    console.error("Video error:", e);
+    setIsLoading(false);
+    setError("Failed to load video. Please check the URL or try again later.");
+  };
+
+  const handleVideoContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    return false;
+  };
+
+  return (
+    <div className="relative w-full h-full bg-black rounded-lg overflow-hidden">
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900 z-10">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p className="text-white">Loading video...</p>
+          </div>
+        </div>
+      )}
+      
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gray-900 z-20">
+          <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
+          <p className="text-white text-lg font-semibold mb-2">Video Error</p>
+          <p className="text-gray-300 text-sm mb-4">{error}</p>
+          <button
+            onClick={() => {
+              setIsLoading(true);
+              setError(null);
+              if (videoRef.current) {
+                videoRef.current.load();
+              }
+            }}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-md"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      
+      <video
+        ref={videoRef}
+        key={videoUrl}
+        src={videoUrl}
+        title={title}
+        className="absolute inset-0 w-full h-full"
+        controls
+        controlsList="nodownload noplaybackrate"
+        playsInline
+        preload="metadata"
+        onLoadedData={handleVideoLoad}
+        onCanPlay={handleVideoLoad}
+        onError={handleVideoError}
+        onContextMenu={handleVideoContextMenu}
+      >
+        <source src={videoUrl} type="video/mp4" />
+        <source src={videoUrl} type="video/webm" />
+        Your browser does not support the video tag.
+      </video>
+      
+      {!isLoading && !error && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 pointer-events-none">
+          <p className="text-white text-sm font-medium">{title}</p>
+          <p className="text-gray-300 text-xs">Platform Video Player</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Main Video Player Component - SIMPLE AND WORKING
+const VideoPlayerComponent: React.FC<{videoUrl: string | null; title: string}> = ({videoUrl, title}) => {
+  const videoInfo = getVideoInfo(videoUrl);
+
+  console.log("VideoPlayerComponent rendering with:", { 
+    videoUrl, 
+    videoInfo,
+    title 
+  });
+
+  if (!videoInfo.url) {
+    console.log("No video URL available");
+    return (
+      <div className="relative w-full h-full bg-gray-900 flex items-center justify-center rounded-lg">
+        <div className="text-center p-6">
+          <Video className="w-16 h-16 text-gray-500 mx-auto mb-4" />
+          <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
+          <p className="text-gray-400 text-sm">This video is currently unavailable.</p>
+          {videoUrl && (
+            <p className="text-gray-500 text-xs mt-2 break-all">URL: {videoUrl.substring(0, 100)}...</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (videoInfo.type === 'youtube' && videoInfo.videoId) {
+    console.log("Rendering YouTube player with ID:", videoInfo.videoId);
+    return (
+      <div className="w-full h-full">
+        <YouTubePlayer 
+          videoId={videoInfo.videoId} 
+          title={title}
+        />
+      </div>
+    );
+  }
+
+  console.log("Rendering direct video player with URL:", videoInfo.url);
+  return (
+    <div className="w-full h-full">
+      <DirectVideoPlayer 
+        videoUrl={videoInfo.url} 
+        title={title}
       />
     </div>
   );
@@ -344,12 +550,6 @@ const StudentDashboard: React.FC = () => {
   const [selectedExamTitle, setSelectedExamTitle] = useState("");
   const [selectedTeacherName, setSelectedTeacherName] = useState("");
   const [selectedSubject, setSelectedSubject] = useState("");
-
-  // Video loading states
-  const [videoLoading, setVideoLoading] = useState<{[key: string]: boolean}>({});
-  const [videoErrors, setVideoErrors] = useState<{[key: string]: string}>({});
-  const [videoUrls, setVideoUrls] = useState<{[key: string]: { url: string | null; type: string } }>({});
-  const [videoRetryCount, setVideoRetryCount] = useState<{[key: string]: number}>({});
 
   useEffect(() => {
     const fetchCenterInfo = async () => {
@@ -966,29 +1166,9 @@ const StudentDashboard: React.FC = () => {
     toast.success(`Downloading ${title}`);
   };
 
-  const handleVideoPlay = async (videoId: string, videoUrl: string | null) => {
+  const handleVideoPlay = (videoId: string) => {
+    console.log("Handle video play clicked for video ID:", videoId);
     setActiveVideo(activeVideo === videoId ? null : videoId);
-
-    if (activeVideo !== videoId) {
-      setVideoLoading(prev => ({ ...prev, [videoId]: true }));
-      setVideoErrors(prev => ({ ...prev, [videoId]: "" }));
-
-      // Fetch the video URL asynchronously
-      try {
-        const videoInfo = await getVideoUrlAsync(videoUrl);
-        setVideoUrls(prev => ({ ...prev, [videoId]: videoInfo }));
-      } catch (error) {
-        console.error('Error fetching video URL:', error);
-        setVideoErrors(prev => ({
-          ...prev,
-          [videoId]: "Failed to load video URL. Please try again later."
-        }));
-      }
-
-      setTimeout(() => {
-        setVideoLoading(prev => ({ ...prev, [videoId]: false }));
-      }, 500);
-    }
   };
 
   const getHighestScore = (examId: string): number => {
@@ -1580,13 +1760,18 @@ const StudentDashboard: React.FC = () => {
                           ) : sub.videosWithExams.length > 0 ? (
                             <div className="space-y-6">
                               {sub.videosWithExams.map((video) => {
-                                const videoInfo = videoUrls[video.id] || getVideoUrl(video.video_url);
-
+                                console.log("Video data:", {
+                                  id: video.id,
+                                  title: video.title,
+                                  url: video.video_url,
+                                  active: activeVideo === video.id
+                                });
+                                
                                 return (
                                   <div key={video.id} className="border rounded-lg overflow-hidden">
-                                    <div
+                                    <div 
                                       className="bg-gray-50 p-4 cursor-pointer hover:bg-gray-100 transition-colors"
-                                      onClick={() => handleVideoPlay(video.id, video.video_url)}
+                                      onClick={() => handleVideoPlay(video.id)}
                                     >
                                       <div className="flex justify-between items-center">
                                         <div className="flex items-center space-x-3">
@@ -1607,63 +1792,13 @@ const StudentDashboard: React.FC = () => {
                                       </div>
                                     </div>
 
-                                    {activeVideo === video.id && video.video_url && (
+                                    {activeVideo === video.id && (
                                       <div className="p-4 bg-black">
                                         <div className="relative w-full h-64 md:h-96 rounded-lg overflow-hidden bg-gray-900">
-                                          {videoLoading[video.id] ? (
-                                            <div className="absolute inset-0 flex items-center justify-center">
-                                              <div className="text-white text-center">
-                                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                                                <p>Loading video...</p>
-                                              </div>
-                                            </div>
-                                          ) : videoErrors[video.id] ? (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-red-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">Video Not Available</p>
-                                              <p className="text-gray-300 text-sm mb-4">{videoErrors[video.id]}</p>
-                                            </div>
-                                          ) : videoInfo.url ? (
-                                            <>
-                                              {videoInfo.type === 'youtube' ? (
-                                                <YouTubePlayer
-                                                  videoId={videoInfo.url}
-                                                  title={video.title}
-                                                />
-                                              ) : (
-                                                <video
-                                                  key={`${video.id}-${Date.now()}`}
-                                                  src={videoInfo.url}
-                                                  title={video.title}
-                                                  className="absolute inset-0 w-full h-full"
-                                                  controls
-                                                  controlsList="nodownload noplaybackrate"
-                                                  playsInline
-                                                  preload="metadata"
-                                                  onError={(e) => {
-                                                    setVideoErrors(prev => ({
-                                                      ...prev,
-                                                      [video.id]: "Failed to load video. Please try again later."
-                                                    }));
-                                                  }}
-                                                >
-                                                  Your browser does not support the video tag.
-                                                </video>
-                                              )}
-                                              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                                                <p className="text-white text-sm font-medium">{video.title}</p>
-                                                <p className="text-gray-300 text-xs">
-                                                  Platform Video Player
-                                                </p>
-                                              </div>
-                                            </>
-                                          ) : (
-                                            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                                              <Video className="w-16 h-16 text-yellow-500 mb-4" />
-                                              <p className="text-white text-lg font-semibold mb-2">No Video Available</p>
-                                              <p className="text-gray-300 text-sm">This video is currently unavailable.</p>
-                                            </div>
-                                          )}
+                                          <VideoPlayerComponent 
+                                            videoUrl={video.video_url} 
+                                            title={video.title}
+                                          />
                                         </div>
                                       </div>
                                     )}
@@ -1831,7 +1966,7 @@ const StudentDashboard: React.FC = () => {
                               ) : (
                                 <p className="text-gray-500 text-center py-4">No study materials available</p>
                               )}
-                        </div>
+                            </div>
                           )}
                         </div>
                       </div>
